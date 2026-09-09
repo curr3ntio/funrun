@@ -11,6 +11,8 @@ const CONFIG = {
   fadeDuration: 1.0,   // s — fade length; canvas is removed when it ends (only when loop is false)
   loop: true,          // true: black and white keep pouring over each other forever (background mode)
   loopPeriod: null,    // s — length of one black+white cycle; null = 2 * whiteStart
+  tapToContinue: true, // loop mode: hold once a pour has covered the screen; click/tap starts the next pour
+  holdAt: 5.5,         // s of timeline after a pour starts when it counts as "done" (must be < whiteStart)
   black: [0.020, 0.020, 0.022],
   white: [0.965, 0.960, 0.945],
   seedBlack: 1.0,      // different seeds => different rivulet shapes
@@ -25,7 +27,7 @@ const CONFIG = {
     maxWidth: null,      // optional px cap, null = none
     pageIsDark: false,   // what the page under the overlay looks like before the first pour covers it
   },
-  showPanel: true,     // control panel visible on load (toggle with "d")
+  showPanel: false,    // control panel visible on load (toggle with "d" or tap the hint)
   // live-tunable (debug panel)
   speed: 0.13,         // playback speed of the whole timeline (0.01 = almost frozen, 5 = fast)
   speedVar: 4.0,       // 0 = every run falls at the same speed, 1 = normal spread, up to 4 = wild
@@ -214,18 +216,17 @@ void main() {
   float a   = (aBase * (1.0 - aA) + aA) * (1.0 - aB) + aB;
 
   // ---- logo: pick the black or white image per pixel from what is underneath ----
-  if (uLogoOn > 0.5) {
-    vec2 uv = (p - uLogoRect.xy) / uLogoRect.zw;
-    if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) {
-      // luminance of paint + (uncovered) page under this pixel
-      float lum = dot(rgb, vec3(0.299, 0.587, 0.114)) + (1.0 - a) * uPageLum;
-      float light = smoothstep(0.42, 0.58, lum);          // 1 = light underneath -> black logo
-      vec4 lb = texture(uLogoBlack, uv), lw = texture(uLogoWhite, uv);
-      vec4 logo = mix(lw, lb, light);                      // premultiplied
-      rgb = rgb * (1.0 - logo.a) + logo.rgb;
-      a   = a   * (1.0 - logo.a) + logo.a;
-    }
-  }
+  // sampled in uniform control flow (no branch) so mip selection is well defined right up to the
+  // rectangle edge — sampling inside an if() draws a faint border on some mobile GPUs
+  vec2 uv = (p - uLogoRect.xy) / uLogoRect.zw;
+  vec4 lb = texture(uLogoBlack, uv), lw = texture(uLogoWhite, uv);
+  float inside = (uLogoOn > 0.5 && all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) ? 1.0 : 0.0;
+  // luminance of paint + (uncovered) page under this pixel decides black vs white image
+  float lum = dot(rgb, vec3(0.299, 0.587, 0.114)) + (1.0 - a) * uPageLum;
+  float light = smoothstep(0.42, 0.58, lum);            // 1 = light underneath -> black logo
+  vec4 logo = mix(lw, lb, light) * inside;               // premultiplied
+  rgb = rgb * (1.0 - logo.a) + logo.rgb;
+  a   = a   * (1.0 - logo.a) + logo.a;
   outColor = vec4(rgb, a) * uFade;
 }`;
 
@@ -317,9 +318,13 @@ function createProgram(gl, vsSrc, fsSrc) {
     width = window.innerWidth; height = window.innerHeight;
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px';     // explicit CSS size: 100vw/100vh drift on mobile (URL bar) and desktop (scrollbar)
+    canvas.style.height = height + 'px';
     gl.viewport(0, 0, canvas.width, canvas.height);
   }
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
   resize();
 
   // --- timeline state ---
@@ -330,6 +335,7 @@ function createProgram(gl, vsSrc, fsSrc) {
   let running = true;
   const endTime = () => CONFIG.fadeStart + CONFIG.fadeDuration;
   const period = () => CONFIG.loopPeriod || CONFIG.whiteStart * 2;
+  let waiting = false;      // loop + tapToContinue: timeline is held until the next click/tap
 
   function draw(t) {
     const fade = CONFIG.loop ? 1 : 1 - Math.min(Math.max((t - CONFIG.fadeStart) / CONFIG.fadeDuration, 0), 1);
@@ -372,6 +378,11 @@ function createProgram(gl, vsSrc, fsSrc) {
     if (document.hidden) { last = null; return; }     // resumed by visibilitychange
     if (last !== null && manualTime === null && !paused) clock += (now - last) / 1000 * CONFIG.speed;
     last = now;
+    if (CONFIG.loop && CONFIG.tapToContinue && manualTime === null) {
+      const slot = period() / 2;                       // one pour per slot: black, white, black, ...
+      const local = clock - Math.floor(clock / slot) * slot;
+      if (local >= CONFIG.holdAt) { clock -= local - CONFIG.holdAt; waiting = true; }
+    }
     const t = manualTime !== null ? manualTime : clock;
     draw(t);
     syncDebug(t);
@@ -383,8 +394,11 @@ function createProgram(gl, vsSrc, fsSrc) {
 
   // --- debug panel (toggle with "d") ---
   const panel = document.getElementById('debug');
+  const hint = document.getElementById('hint');
   let debugOpen = CONFIG.showPanel;
-  panel.hidden = !debugOpen;
+  function setPanel(open) { debugOpen = open; panel.hidden = !open; if (hint) hint.hidden = open; }
+  setPanel(debugOpen);
+  hint && hint.addEventListener('click', () => setPanel(true));
   const sliders = {
     time:  document.getElementById('dbg-time'),
     speed: document.getElementById('dbg-speed'),
@@ -411,8 +425,18 @@ function createProgram(gl, vsSrc, fsSrc) {
   sliders.time && sliders.time.addEventListener('input', e => { window.__setTime(parseFloat(e.target.value)); });
   pauseBox && pauseBox.addEventListener('change', e => { paused = e.target.checked; if (!paused) manualTime = null; });
   function revive() { if (!running) { document.body.appendChild(canvas); running = true; last = null; resize(); requestAnimationFrame(frame); } }
+  function nextPour() {                                // click/tap while holding: jump to the next pour
+    if (!waiting) return;
+    const slot = period() / 2;
+    clock = (Math.floor(clock / slot) + 1) * slot;
+    waiting = false; last = null;
+  }
+  window.addEventListener('pointerdown', e => {
+    if (panel.contains(e.target) || (hint && hint.contains(e.target))) return;
+    nextPour();
+  });
   function restart() {
-    manualTime = null; clock = 0; last = null; paused = false;
+    manualTime = null; clock = 0; last = null; paused = false; waiting = false;
     if (pauseBox) pauseBox.checked = false;
     revive();
   }
@@ -428,13 +452,12 @@ function createProgram(gl, vsSrc, fsSrc) {
   }
   window.addEventListener('keydown', e => {
     if (e.key !== 'd' || e.metaKey || e.ctrlKey || e.altKey) return;
-    debugOpen = !debugOpen;
-    panel.hidden = !debugOpen;
+    setPanel(!debugOpen);
   });
 
   // --- test hook: window.__setTime(t) freezes the timeline at t (seconds) ---
-  window.__setTime = t => { manualTime = t; clock = t; if (sliders.time) sliders.time.value = String(t); revive(); };
+  window.__setTime = t => { manualTime = t; clock = t; waiting = false; if (sliders.time) sliders.time.value = String(t); revive(); };
   window.__pixel = (x, y) => { draw(manualTime !== null ? manualTime : clock); const b = new Uint8Array(4); gl.readPixels(Math.round(x * dpr), Math.round((height - y) * dpr), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b); return Array.from(b); };
-  window.__paint = { config: CONFIG, resume: () => { manualTime = null; }, restart };
+  window.__paint = { config: CONFIG, resume: () => { manualTime = null; }, restart, nextPour, isWaiting: () => waiting };
   window.__paintReady = true;
 })();

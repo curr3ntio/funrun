@@ -28,7 +28,10 @@ The sequence plays automatically on load:
 `CONFIG.loop` is `true` by default, which makes the page usable as a background
 animation: black and white keep pouring over each other every `loopPeriod`
 seconds (default 2 × `whiteStart` = 16 s of timeline, stretched by `speed`),
-with a fresh noise seed each cycle. Set `loop: false` to get the one-shot
+with a fresh noise seed each cycle. With `tapToContinue: true` (default) the
+timeline holds once a pour has covered the screen (`holdAt` seconds after it
+started) and a click or tap anywhere starts the next pour; set it to `false` to
+cycle automatically. Set `loop: false` to get the one-shot
 sequence instead: the overlay then fades out at `fadeStart` (23 s) over
 `fadeDuration` (1 s) and the canvas is removed from the DOM.
 
@@ -47,7 +50,7 @@ runs without a logo.
 
 ## Debug panel
 
-The panel is shown on load (set `showPanel: false` in `CONFIG` to hide it) and `d` toggles it. It has a restart button, a timeline scrubber and sliders for playback speed (down to
+The panel is hidden on load; press `d` or tap the "press d for controls" hint to open it (set `showPanel: true` in `CONFIG` to start open). It has a restart button, a timeline scrubber and sliders for playback speed (down to
 almost a standstill, slowing the whole timeline), speed variation and size variation between runs, drip size, run length (how far
 the runs race ahead of the paint block), thin ↔ thick paint (viscosity: affects fall
 speed, trail width, bead size and run length together), noise scale, logo size and shading (0 = flat colour, the default; 1 = full glossy 3D look). The page also exposes
@@ -56,7 +59,7 @@ the screenshot script) and `window.__paint.resume()` to let the clock run again.
 
 ## Files
 
-- `index.html` – placeholder page content plus the overlay canvas and debug panel
+- `index.html` – a plain white page with the overlay canvas, the hint and the control panel
 - `style.css` – page styling, the fixed full-screen canvas and the panel
 - `paint.js` – config, vertex + fragment shader (template strings), a tiny WebGL2 helper, timeline and render loop
 

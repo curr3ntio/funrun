@@ -3,46 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Paint Pour</title>
+  <title>Funrun</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="page">
-    <header class="hero">
-      <p class="eyebrow">Studio notes · Issue 04</p>
-      <h1>Everything worth building starts as a mess on the floor.</h1>
-      <p class="lede">
-        A short collection of thoughts on materials, patience and the strange joy of
-        watching something slow happen. Scroll down, or just wait for the paint.
-      </p>
-    </header>
-
-    <section class="grid">
-      <article class="card">
-        <h2>Viscosity</h2>
-        <p>Thick paint moves like it has somewhere better to be but no particular hurry to get there. It bunches, hesitates, then lets go all at once.</p>
-      </article>
-      <article class="card">
-        <h2>Gloss</h2>
-        <p>A wet surface tells you where the light is. Every bead carries a small, bent reflection of the room around it.</p>
-      </article>
-      <article class="card">
-        <h2>Gravity</h2>
-        <p>Runs never fall in step. The wide ones lead, the thin ones lag, catch a neighbour and finally sprint the last stretch.</p>
-      </article>
-      <article class="card">
-        <h2>Settling</h2>
-        <p>Even after the front has passed, nothing is truly still. Edges relax, tips sag, the film keeps breathing for a while.</p>
-      </article>
-    </section>
-
-    <section class="prose">
-      <p>The overlay above this page is a single WebGL2 triangle. There are no images, no DOM tricks and no CSS keyframes involved in the paint itself; every rivulet, bead and highlight is computed per pixel in a fragment shader from a handful of noise functions and one time value.</p>
-      <p>Press <kbd>d</kbd> to open the debug panel and scrub the timeline, or change how thick, glossy and noisy the paint is.</p>
-    </section>
-  </main>
 
   <canvas id="paint" aria-hidden="true"></canvas>
+
+  <button id="hint" type="button">press d for controls</button>
 
   <div id="debug">
     <label>time <input id="dbg-time" type="range" min="0" max="25" step="0.01" value="0"><span></span></label>
