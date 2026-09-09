@@ -37,8 +37,7 @@ If WebGL2 is unavailable the overlay is simply not shown.
 
 ## Centred logo
 
-`logo-black.png` and `logo-white.png` are drawn centred on the overlay (replace
-them with your own; the ones in the repo are stand-ins). Per pixel, the shader
+`funrun-text-black.png` and `funrun-text-white.png` are drawn centred on the overlay. Per pixel, the shader
 looks at what is underneath — paint or the uncovered page — and shows the
 **black** image where it is light and the **white** image where it is dark. The
 choice is made per pixel, so the drip edge masks and reveals the logo exactly as

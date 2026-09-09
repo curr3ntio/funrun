@@ -19,8 +19,8 @@ const CONFIG = {
   // centred logo: the black image shows where the paint (or page) under it is light,
   // the white image where it is dark — decided per pixel, so the drip edge masks it
   logo: {
-    black: 'logo-black.png',
-    white: 'logo-white.png',
+    black: 'funrun-text-black.png',
+    white: 'funrun-text-white.png',
     width: 0.4,          // fraction of the viewport width
     maxWidth: 560,       // px cap
     pageIsDark: false,   // what the page under the overlay looks like before the first pour covers it
