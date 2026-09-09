@@ -21,7 +21,7 @@ const CONFIG = {
   logo: {
     black: 'funrun-text-black.png',
     white: 'funrun-text-white.png',
-    width: 0.4,          // fraction of the viewport width (panel: "logo size")
+    width: 0.62,         // fraction of the viewport width (panel: "logo size")
     maxWidth: null,      // optional px cap, null = none
     pageIsDark: false,   // what the page under the overlay looks like before the first pour covers it
   },
