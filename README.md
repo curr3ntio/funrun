@@ -50,7 +50,7 @@ runs without a logo.
 
 ## Debug panel
 
-The panel is hidden on load; press `d` or tap the "press d for controls" hint to open it (set `showPanel: true` in `CONFIG` to start open). It has a restart button, a timeline scrubber and sliders for playback speed (down to
+The panel is hidden on load; press `d` or click the hint in the corner to open it (on touch devices the hint reads "tap here for controls" and the panel has a hide button) (set `showPanel: true` in `CONFIG` to start open). It has a restart button, a timeline scrubber and sliders for playback speed (down to
 almost a standstill, slowing the whole timeline), speed variation and size variation between runs, drip size, run length (how far
 the runs race ahead of the paint block), thin ↔ thick paint (viscosity: affects fall
 speed, trail width, bead size and run length together), noise scale, logo size and shading (0 = flat colour, the default; 1 = full glossy 3D look). The page also exposes

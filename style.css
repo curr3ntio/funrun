@@ -37,6 +37,7 @@ html, body {
   backdrop-filter: blur(6px);
 }
 #hint:hover { color: #eee; }
+#hint.touch { color: #eee; font-size: 14px; padding: 14px 18px; background: rgba(20, 20, 20, 0.75); }
 #hint[hidden] { display: none; }
 
 /* Debug panel (toggle with "d"). */
@@ -79,3 +80,5 @@ html, body {
   cursor: pointer;
 }
 #debug button:hover { background: #fff; }
+#debug button.ghost { background: transparent; color: #aaa; }
+#debug button.ghost:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }

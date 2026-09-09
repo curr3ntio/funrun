@@ -398,7 +398,12 @@ function createProgram(gl, vsSrc, fsSrc) {
   let debugOpen = CONFIG.showPanel;
   function setPanel(open) { debugOpen = open; panel.hidden = !open; if (hint) hint.hidden = open; }
   setPanel(debugOpen);
+  // touch devices have no "d" key: make the hint a clear call to action instead
+  const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if (hint) { hint.textContent = touch ? 'tap here for controls' : 'press d for controls'; hint.classList.toggle('touch', touch); }
   hint && hint.addEventListener('click', () => setPanel(true));
+  const closeBtn = document.getElementById('dbg-close');
+  closeBtn && closeBtn.addEventListener('click', () => setPanel(false));
   const sliders = {
     time:  document.getElementById('dbg-time'),
     speed: document.getElementById('dbg-speed'),
