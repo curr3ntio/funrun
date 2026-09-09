@@ -50,7 +50,7 @@ runs without a logo.
 The panel is shown on load (set `showPanel: false` in `CONFIG` to hide it) and `d` toggles it. It has a restart button, a timeline scrubber and sliders for playback speed (down to
 almost a standstill, slowing the whole timeline), speed variation and size variation between runs, drip size, run length (how far
 the runs race ahead of the paint block), thin ↔ thick paint (viscosity: affects fall
-speed, trail width, bead size and run length together), noise scale and shading (0 = flat colour, the default; 1 = full glossy 3D look). The page also exposes
+speed, trail width, bead size and run length together), noise scale, logo size and shading (0 = flat colour, the default; 1 = full glossy 3D look). The page also exposes
 `window.__setTime(seconds)` to freeze the timeline at a given moment (used by
 the screenshot script) and `window.__paint.resume()` to let the clock run again.
 

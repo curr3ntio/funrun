@@ -21,8 +21,8 @@ const CONFIG = {
   logo: {
     black: 'funrun-text-black.png',
     white: 'funrun-text-white.png',
-    width: 0.4,          // fraction of the viewport width
-    maxWidth: 560,       // px cap
+    width: 0.4,          // fraction of the viewport width (panel: "logo size")
+    maxWidth: null,      // optional px cap, null = none
     pageIsDark: false,   // what the page under the overlay looks like before the first pour covers it
   },
   showPanel: true,     // control panel visible on load (toggle with "d")
@@ -353,7 +353,7 @@ function createProgram(gl, vsSrc, fsSrc) {
     gl.uniform1f(U.uSeedB, CONFIG.seedWhite);
     gl.uniform1f(U.uLoop, CONFIG.loop ? 1 : 0);
     gl.uniform1f(U.uPeriod, period());
-    const lw = Math.min(width * CONFIG.logo.width, CONFIG.logo.maxWidth), lh = lw / logoAspect;
+    const lw = Math.min(width * CONFIG.logo.width, CONFIG.logo.maxWidth || Infinity), lh = lw / logoAspect;
     gl.uniform4f(U.uLogoRect, (width - lw) / 2, (height - lh) / 2, lw, lh);
     gl.uniform1f(U.uLogoOn, logoOn ? 1 : 0);
     gl.uniform1f(U.uPageLum, CONFIG.logo.pageIsDark ? 0 : 1);
@@ -395,6 +395,7 @@ function createProgram(gl, vsSrc, fsSrc) {
     runLength: document.getElementById('dbg-runlen'),
     thick: document.getElementById('dbg-thick'),
     gloss: document.getElementById('dbg-gloss'),
+    logoSize: document.getElementById('dbg-logo'),
   };
   const pauseBox = document.getElementById('dbg-pause');
   if (sliders.time) sliders.time.max = String(CONFIG.loop ? period() * 2 : endTime());
@@ -402,6 +403,10 @@ function createProgram(gl, vsSrc, fsSrc) {
     if (!sliders[key]) continue;
     sliders[key].value = String(CONFIG[key]);   // panel always starts at the CONFIG defaults
     sliders[key].addEventListener('input', e => { CONFIG[key] = parseFloat(e.target.value); });
+  }
+  if (sliders.logoSize) {
+    sliders.logoSize.value = String(CONFIG.logo.width);
+    sliders.logoSize.addEventListener('input', e => { CONFIG.logo.width = parseFloat(e.target.value); });
   }
   sliders.time && sliders.time.addEventListener('input', e => { window.__setTime(parseFloat(e.target.value)); });
   pauseBox && pauseBox.addEventListener('change', e => { paused = e.target.checked; if (!paused) manualTime = null; });
