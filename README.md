@@ -27,11 +27,11 @@ The sequence plays automatically on load:
 
 `CONFIG.loop` is `true` by default, which makes the page usable as a background
 animation: black and white keep pouring over each other every `loopPeriod`
-seconds (default 2 × `whiteStart` = 16 s of timeline, stretched by `speed`),
-with a fresh noise seed each cycle. With `tapToContinue: true` (default) the
+seconds (default 2 × `whiteStart` = 8 s of timeline, stretched by `speed`),
+with a fresh noise seed each cycle. With `tapToContinue: true` the
 timeline holds once a pour has covered the screen (`holdAt` seconds after it
-started) and a click or tap anywhere starts the next pour; set it to `false` to
-cycle automatically. Set `loop: false` to get the one-shot
+started) and a click or tap anywhere starts the next pour; it is `false` by default, so
+pours follow each other without a pause. Set `loop: false` to get the one-shot
 sequence instead: the overlay then fades out at `fadeStart` (23 s) over
 `fadeDuration` (1 s) and the canvas is removed from the DOM.
 

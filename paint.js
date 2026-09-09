@@ -5,14 +5,14 @@
  * ========================================================================= */
 const CONFIG = {
   blackStart:   0.0,   // s — black pour begins
-  whiteStart:   8.0,   // s — white pour begins over the black
+  whiteStart:   4.0,   // s — next pour begins; the previous one has fully covered by ~3.2–3.9 s, so no pause
   dripTime:     3.0,   // s — roughly how long the front takes to reach the bottom
   fadeStart:   23.0,   // s — overlay starts fading out (only when loop is false)
   fadeDuration: 1.0,   // s — fade length; canvas is removed when it ends (only when loop is false)
   loop: true,          // true: black and white keep pouring over each other forever (background mode)
   loopPeriod: null,    // s — length of one black+white cycle; null = 2 * whiteStart
-  tapToContinue: true, // loop mode: hold once a pour has covered the screen; click/tap starts the next pour
-  holdAt: 5.5,         // s of timeline after a pour starts when it counts as "done" (must be < whiteStart)
+  tapToContinue: false,// loop mode: hold once a pour has covered the screen; click/tap starts the next pour
+  holdAt: 3.9,         // s of timeline after a pour starts when it counts as "done" (must be < whiteStart)
   black: [0.020, 0.020, 0.022],
   white: [0.965, 0.960, 0.945],
   seedBlack: 1.0,      // different seeds => different rivulet shapes
