@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Slug Luv</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; overflow: hidden; background: #fcfffc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    #container { position: fixed; inset: 0; touch-action: none; }
+    #container canvas { display: block; }
+
+    #hint {
+      position: fixed; right: 16px; bottom: 16px; z-index: 10;
+      font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #888; background: rgba(20, 20, 20, 0.55); border: 0; border-radius: 8px;
+      padding: 8px 12px; cursor: pointer; backdrop-filter: blur(6px);
+    }
+    #hint:hover { color: #eee; }
+    #hint.touch { color: #eee; font-size: 14px; padding: 14px 18px; background: rgba(20, 20, 20, 0.75); }
+    #hint[hidden] { display: none; }
+
+    #debug {
+      position: fixed; right: 16px; bottom: 16px; z-index: 10;
+      background: rgba(20, 20, 20, 0.88); color: #eee;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 12px 14px; border-radius: 10px; display: grid; gap: 8px; min-width: 300px;
+      backdrop-filter: blur(6px); max-height: calc(100vh - 32px); overflow: auto;
+    }
+    #debug[hidden] { display: none; }
+    #debug label { display: grid; grid-template-columns: 110px 1fr 44px; align-items: center; gap: 8px; }
+    #debug label.wide { grid-template-columns: 110px 1fr; }
+    #debug input[type="range"] { width: 100%; }
+    #debug select { font: inherit; }
+    #debug span { text-align: right; opacity: 0.8; }
+    #debug .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+    #debug .note { opacity: 0.5; }
+    #debug .section { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.12); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+    #debug input[type="text"][hidden] { display: none; }
+    #debug input[type="text"] { flex: 1; font: inherit; color: #eee; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+    #debug button {
+      font: inherit; color: #111; background: #eee; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer;
+    }
+    #debug button:hover { background: #fff; }
+    #debug button.ghost { background: transparent; color: #aaa; }
+    #debug button.ghost:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+  </style>
+</head>
+<body>
+
+  <div id="container"></div>
+
+  <button id="hint" type="button">press d for controls</button>
+
+  <div id="debug" hidden>
+    <label>pulse (ms) <input id="dbg-pulse" type="range" min="50" max="2000" step="10"><span></span></label>
+    <label>crawl <input id="dbg-crawl" type="range" min="0" max="150" step="1"><span></span></label>
+    <label>pull <input id="dbg-pull" type="range" min="0" max="1" step="0.01"><span></span></label>
+    <label>hug <input id="dbg-hug" type="range" min="0" max="3" step="0.01"><span></span></label>
+    <label>damping <input id="dbg-damping" type="range" min="0.5" max="0.99" step="0.005"><span></span></label>
+    <label>ribs <input id="dbg-rib" type="range" min="0" max="2" step="0.01"><span></span></label>
+    <label>glow <input id="dbg-glow" type="range" min="0" max="3" step="0.01"><span></span></label>
+    <label>tube radius <input id="dbg-radius" type="range" min="0.4" max="1.4" step="0.01"><span></span></label>
+    <label class="wide">stripes <select id="dbg-stripes"><option>64</option><option>128</option><option>256</option></select></label>
+    <label class="wide">worms <select id="dbg-worms"><option>1</option><option>2</option></select></label>
+    <label class="wide"><input id="dbg-sound" type="checkbox"> sound</label>
+    <div class="note">click / touch + drag: up–down sets the pulse rate, left–right the phaser</div>
+    <div class="section">colours</div>
+    <label class="wide">palette <select id="dbg-palette"></select></label>
+    <div class="row"><input id="dbg-custom" type="text" placeholder="paste 5 hex codes or a coolors.co link" spellcheck="false"><button id="dbg-apply" type="button">apply</button></div>
+    <div class="note">Adobe Color (Kuler) themes: copy the hex codes from color.adobe.com and paste them here</div>
+    <div class="section">camera</div>
+    <label>field of view <input id="dbg-fov" type="range" min="8" max="60" step="0.5"><span></span></label>
+    <label>distance <input id="dbg-dist" type="range" min="15" max="120" step="0.5"><span></span></label>
+    <label>tilt <input id="dbg-tilt" type="range" min="30" max="150" step="0.5"><span></span></label>
+    <label>swing <input id="dbg-swing" type="range" min="-75" max="75" step="0.5"><span></span></label>
+    <label class="wide"><input id="dbg-orbit" type="checkbox"> drag orbits the camera</label>
+    <label class="wide"><input id="dbg-auto" type="checkbox"> auto orbit</label>
+    <div class="row"><button id="dbg-camreset" type="button" class="ghost">reset camera</button></div>
+    <div class="section">share</div>
+    <div class="note">found a setting you like? share puts everything (settings, palette, stripe pattern, camera) in a link and copies it</div>
+    <div class="row"><button id="dbg-share" type="button">🔗 share</button><input id="dbg-sharelink" type="text" readonly hidden spellcheck="false"></div>
+    <div class="row">
+      <button id="dbg-restart" type="button">↻ restart</button>
+      <button id="dbg-recolour" type="button">🎨 recolour</button>
+      <button id="dbg-close" type="button" class="ghost">✕ hide</button>
+    </div>
+  </div>
+
+  <!-- Tone.js (UMD, global `Tone`) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  /* =========================================================================
+   *  Slug Luv, rebuilt without assets.
+   *
+   *  Two closed chains of point bodies are simulated with a small
+   *  position-based solver (distance + bend constraints, sphere collisions,
+   *  a ground plane). Every frame a tube is skinned along each chain with a
+   *  1-D stripe texture that also drives the rib radius and the glow.
+   *  One ring at a time "crawls": each body steers toward its predecessor
+   *  for one pulse, alternating rings, with a kick drum per pulse.
+   * ========================================================================= */
+
+  // Five colours per palette. Roles are assigned by brightness: the darkest is
+  // the stripe base, the lightest the background and key light, the next
+  // lightest the fill light tint, and of the remaining two the darker is the
+  // ground and the other an accent. That reproduces the original's assignment.
+  const PALETTES = [
+    { group: 'sketch', name: 'slug luv',   hex: '010c26-ba1247-ff1d00-41d6ea-fcfffc' },
+    { group: 'sketch', name: 'navy red',   hex: '133c5a-6881a9-9f978a-f3f3f3-ff0141' },
+    { group: 'sketch', name: 'graphite',   hex: '161819-44484c-899199-dae6f2-e5f2ff' },
+    { group: 'sketch', name: 'plum',       hex: '845a6d-3e1929-6e75a8-8d91c7-b0daf1' },
+    { group: 'sketch', name: 'sunset',     hex: '003049-d62828-f77f00-fcbf49-eae2b7' },
+    { group: 'sketch', name: 'acid',       hex: 'fb5012-cbbaed-e9df00-03fcba-01fdf6' },
+    // classic Adobe Kuler / COLOURlovers themes
+    { group: 'kuler', name: 'Giant Goldfish',          hex: '69d2e7-a7dbd8-e0e4cc-f38630-fa6900' },
+    { group: 'kuler', name: 'Thought Provoking',       hex: 'ecd078-d95b43-c02942-542437-53777a' },
+    { group: 'kuler', name: 'Cheer Up Emo Kid',        hex: '556270-4ecdc4-c7f464-ff6b6b-c44d58' },
+    { group: 'kuler', name: 'Ocean Five',              hex: '00a0b0-6a4a3c-cc333f-eb6841-edc951' },
+    { group: 'kuler', name: 'Adrift in Dreams',        hex: 'cff09e-a8dba8-79bd9a-3b8686-0b486b' },
+    { group: 'kuler', name: 'Let Them Eat Cake',       hex: '774f38-e08e79-f1d4af-ece5ce-c5e0dc' },
+    { group: 'kuler', name: 'Sandy Stone Beach',       hex: 'e6e2af-a7a37e-efecca-046380-002f2f' },
+    { group: 'kuler', name: 'Firenze',                 hex: '468966-fff0a5-ffb03b-b64926-8e2800' },
+    { group: 'kuler', name: 'Vintage Modern',          hex: '8c2318-5e8c6a-88a65e-bfb35a-f2c45a' },
+    { group: 'kuler', name: 'Pancakes',                hex: '594f4f-547980-45ada8-9de0ad-e5fcc2' },
+    { group: 'kuler', name: 'Hymn for My Soul',        hex: '351330-424254-64908a-e8caa4-cc2a41' },
+    { group: 'kuler', name: 'Miaka',                   hex: 'ff4e50-fc913a-f9d423-ede574-e1f5c4' },
+    { group: 'kuler', name: 'Papua New Guinea',        hex: '5d4157-838689-a8caba-cad7b2-ebe3aa' },
+    { group: 'kuler', name: 'mai',                     hex: '99b898-fecea8-ff847c-e84a5f-2a363b' },
+    { group: 'kuler', name: 'A Dream in Color',        hex: '3fb8af-7fc7af-dad8a7-ff9e9d-ff3d7f' },
+    { group: 'kuler', name: 'Fresh Cut Day',           hex: '00a8c6-40c0cb-f9f2e7-aee239-8fbe00' },
+    { group: 'kuler', name: 'Terra',                   hex: 'e8ddcb-cdb380-036564-033649-031634' },
+    { group: 'kuler', name: 'Lovers in Japan',         hex: 'e94e77-d68189-c6a49a-c6e5d9-f4ead5' },
+    { group: 'kuler', name: 'Vitamin C',               hex: '004358-1f8a70-bedb39-ffe11a-fd7400' },
+    { group: 'kuler', name: 'Curiosity Killed',        hex: 'efffcd-dce9be-555152-2e2633-99173c' },
+    { group: 'kuler', name: 'Good Friends',            hex: 'd1f2a5-effab4-ffc48c-ff9f80-f56991' },
+    { group: 'kuler', name: 'Blue Blood',              hex: '0b0b2b-1b1b5e-2a2a90-3e3ec9-8e8eff' },
+    { group: 'kuler', name: 'Dance to Forget',         hex: 'ff4242-f4fad2-d4ee5e-e1edb9-f0f2eb' },
+    { group: 'kuler', name: 'Wasabi',                  hex: '1c2130-028f76-b3e099-ffeaad-d14334' },
+    { group: 'kuler', name: 'Coup de Grâce',           hex: '2b2b2b-e1e1e1-c93c20-f7b85a-ffffff' },
+    { group: 'kuler', name: 'Neon Nights',             hex: '0d0221-0f084b-26408b-a6cfd5-ff2079' },
+    { group: 'kuler', name: 'Candy Shop',              hex: '2f0a28-8f2d56-d81159-ffbc42-fff1e6' },
+    { group: 'custom', name: 'custom', hex: '010c26-ba1247-ff1d00-41d6ea-fcfffc' },
+  ];
+
+  const CONFIG = {
+    palette: 'slug luv',
+    worms: 2,            // 1 or 2 rings
+    bodies: 96,          // point bodies per ring
+    ringRadius: 4.0,     // starting ring radius (world units)
+    tubeRadius: 0.8,     // tube + collision radius
+    stripes: 128,        // colour bands around each ring (the original picked 128 or 256)
+    radialSegments: 14,
+    pulse: 750,          // ms per crawl pulse when not dragging
+    crawl: 45,           // how hard bodies chase their predecessor during a pulse
+    pull: 0.25,          // gain on anchor pull / gravity / hug (1 = the original's per-frame values)
+    hug: 1.1,            // attraction between the two rings (mirrored bodies)
+    damping: 0.8,        // velocity kept per step
+    rib: 0.35,           // rib depth
+    glow: 1.0,           // emissive pulse strength
+    sound: true,
+    maxDpr: 2,
+    iterations: 10,      // constraint solver iterations per step
+    anchor: [0, 10, 0],
+    gravity: [0, -8, 0],
+    groundZ: -3,
+    bendAngle: 0.15,     // max angle between neighbouring segments (rad); small = smooth, stiff tube
+    showPanel: false,
+    seed: newSeed(),     // stripe pattern; "recolour" picks a new one
+  };
+
+  /* ---- shared links: everything above plus palette and camera lives in the URL hash ---- */
+  const SHARE_KEYS = ['pulse', 'crawl', 'pull', 'hug', 'damping', 'rib', 'glow', 'tubeRadius', 'stripes', 'worms', 'seed'];
+  const pendingCamera = {};                                     // applied once the camera exists
+  (function readShareLink() {
+    const q = new URLSearchParams(location.hash.slice(1));
+    for (const k of SHARE_KEYS) if (q.has(k) && isFinite(parseFloat(q.get(k)))) CONFIG[k] = parseFloat(q.get(k));
+    CONFIG.worms = CONFIG.worms === 1 ? 1 : 2;
+    if (![64, 128, 256].includes(CONFIG.stripes)) CONFIG.stripes = 128;
+    if (q.has('hex')) CONFIG.customHex = q.get('hex');
+    if (q.has('pal')) CONFIG.palette = q.get('pal');
+    for (const k of ['fov', 'distance', 'tilt', 'swing']) if (q.has(k)) pendingCamera[k] = parseFloat(q.get(k));
+    if (q.has('auto')) pendingCamera.auto = q.get('auto') === '1';
+  })();
+
+  const { sin, cos, PI } = Math;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
+  const mapLinear = (x, a1, a2, b1, b2) => b1 + (x - a1) * (b2 - b1) / (a2 - a1);
+  const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+  const quadIn = x => x * x;
+  // small seeded RNG so a shared link reproduces the same stripe bands
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function newSeed() { return Math.floor(Math.random() * 1e9); }   // declaration: used by CONFIG above
+
+  // per-pulse curves (u = 0..1 within a pulse)
+  const dips = u => u < 0.05 ? lerp(-0.5, 0.75, smooth(u / 0.05)) : lerp(0.75, -0.5, quadIn((u - 0.05) / 0.95));
+  const emis = u => u < 0.75 ? lerp(0.01, 0.3, smooth(u / 0.75)) : lerp(0.3, 0.01, smooth((u - 0.75) / 0.25));
+
+  /* ------------------------------------------------------------------ palette */
+  let pal = [], palHex = [];
+  const luminance = c => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  // accepts "010c26-ba1247-…", "#010c26, #ba1247 …" or a coolors.co link; returns 5 hex strings or null
+  function parseHexList(str) {
+    const found = (str.match(/[0-9a-fA-F]{6}/g) || []).map(h => h.toLowerCase());
+    return found.length >= 5 ? found.slice(0, 5) : null;
+  }
+  function loadPalette(name) {
+    const entry = PALETTES.find(p => p.name === name) || PALETTES[0];
+    const cols = parseHexList(entry.hex).map(h => new THREE.Color('#' + h));
+    cols.sort((a, b) => luminance(a) - luminance(b));                    // dark → light
+    const [base, mid1, mid2, tint, bg] = cols;
+    pal = [base, mid1, mid2, tint, bg];                                   // [stripe base, ground, accent, light tint, background]
+    palHex = pal.map(c => '#' + c.getHexString());
+  }
+  if (CONFIG.customHex && parseHexList(CONFIG.customHex)) PALETTES.find(p => p.name === 'custom').hex = parseHexList(CONFIG.customHex).join('-');
+  if (!PALETTES.find(p => p.name === CONFIG.palette)) CONFIG.palette = 'slug luv';
+  loadPalette(CONFIG.palette);
+
+  /* ------------------------------------------------------------------ renderer */
+  const container = document.getElementById('container');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.maxDpr));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const CAMERA_HOME = new THREE.Vector3(-16.67, 2.13, 63.49);
+  const camera = new THREE.PerspectiveCamera(15, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.copy(CAMERA_HOME);
+  camera.lookAt(0, 0, 0);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.1;
+  controls.enablePan = false;
+  controls.minPolarAngle = PI * 0.15;
+  controls.maxPolarAngle = PI * 0.85;
+  controls.minAzimuthAngle = -1.3;
+  controls.maxAzimuthAngle = 1.3;
+  controls.minDistance = 15;
+  controls.maxDistance = 120;
+  controls.autoRotateSpeed = 0.6;
+
+  // camera as spherical coordinates around the orbit target (what the panel edits)
+  const sph = new THREE.Spherical(), camOffset = new THREE.Vector3();
+  function getCamera() {
+    sph.setFromVector3(camOffset.copy(camera.position).sub(controls.target));
+    return { fov: camera.fov, distance: sph.radius, tilt: THREE.MathUtils.radToDeg(sph.phi), swing: THREE.MathUtils.radToDeg(sph.theta) };
+  }
+  function setCamera(c) {
+    sph.setFromVector3(camOffset.copy(camera.position).sub(controls.target));
+    if (c.distance !== undefined) sph.radius = c.distance;
+    if (c.tilt !== undefined) sph.phi = THREE.MathUtils.degToRad(c.tilt);
+    if (c.swing !== undefined) sph.theta = THREE.MathUtils.degToRad(c.swing);
+    sph.makeSafe();
+    camera.position.setFromSpherical(sph).add(controls.target);
+    camera.lookAt(controls.target);
+    if (c.fov !== undefined) { camera.fov = c.fov; camera.updateProjectionMatrix(); }
+  }
+  function setAutoOrbit(on) {
+    controls.autoRotate = on;
+    controls.minAzimuthAngle = on ? -Infinity : -1.3;                     // limits would stop the auto orbit
+    controls.maxAzimuthAngle = on ? Infinity : 1.3;
+  }
+  if (Object.keys(pendingCamera).length) { setCamera(pendingCamera); if (pendingCamera.auto) setAutoOrbit(true); controls.update(); }
+
+  /* ------------------------------------------------------------------ lights */
+  const sun = new THREE.DirectionalLight(0xffffff, 3.0);
+  sun.position.set(0, 10, 7.5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 100;
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -20;
+  sun.shadow.camera.right = sun.shadow.camera.top = 20;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
+  scene.add(sun, sun.target);
+
+  const point = new THREE.PointLight(0xffffff, 60, 0, 2);
+  point.position.set(-10, -5, 10);
+  scene.add(point);
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.4);
+  scene.add(hemi);
+
+  /* ------------------------------------------------------------------ ground */
+  // procedural paper: fine grain + a little low-frequency mottling
+  function makePaperTexture(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    const coarse = new Float32Array(16 * 16);
+    for (let i = 0; i < coarse.length; i++) coarse[i] = Math.random();
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        // bilinear sample of the coarse grid (tiles seamlessly)
+        const gx = x / size * 16, gy = y / size * 16;
+        const x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0;
+        const s = (i, j) => coarse[((j % 16) * 16) + (i % 16)];
+        const low = lerp(lerp(s(x0, y0), s(x0 + 1, y0), fx), lerp(s(x0, y0 + 1), s(x0 + 1, y0 + 1), fx), fy);
+        const v = 128 + (Math.random() - 0.5) * 70 + (low - 0.5) * 40;
+        const o = (y * size + x) * 4;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = clamp(v, 0, 255);
+        img.data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(120, 120);                                 // same tile size as 40 tiles over the original 200-unit plane
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
+  }
+  const groundMat = new THREE.MeshStandardMaterial({
+    bumpMap: makePaperTexture(256), bumpScale: 0.6, roughness: 1, metalness: 0,
+  });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
+  ground.position.z = CONFIG.groundZ;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  function applyPalette() {
+    // beyond the ground plane the "sky" is the ground colour, and fog of the same
+    // colour hides the plane's edge when the camera is tilted low
+    renderer.setClearColor(pal[1], 1);
+    document.body.style.background = palHex[1];
+    scene.fog = new THREE.Fog(pal[1].clone(), 120, 320);
+    sun.color.copy(pal[4]);
+    point.color.copy(pal[3]);
+    hemi.color.copy(pal[3]);
+    hemi.groundColor.copy(pal[1]);
+    groundMat.color.copy(pal[1]);
+  }
+  applyPalette();
+
+  /* ------------------------------------------------------------------ stripes */
+  // A 1-D band of colours: the darkest palette colour blended toward a random
+  // palette entry by a random amount. The blend amount is also the rib height.
+  function makeStripes(count, seed) {
+    const rnd = mulberry32(seed);
+    const data = new Uint8Array(count * 4);
+    const vals = new Float32Array(count);
+    const c = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const v = Math.pow(rnd(), 1.6);                      // bias toward the dark base colour
+      c.set(palHex[0]).lerp(new THREE.Color(palHex[Math.floor(rnd() * palHex.length)]), v);
+      c.convertLinearToSRGB();
+      data[i * 4] = c.r * 255; data[i * 4 + 1] = c.g * 255; data[i * 4 + 2] = c.b * 255; data[i * 4 + 3] = 255;
+      vals[i] = v;
+    }
+    const tex = new THREE.DataTexture(data, count, 1, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return { tex, vals };
+  }
+  // same sampling as GL linear filtering with repeat wrap
+  function sampleStripes(vals, u) {
+    const K = vals.length;
+    const x = u * K - 0.5;
+    let i0 = Math.floor(x);
+    const f = x - i0;
+    i0 = ((i0 % K) + K) % K;
+    const i1 = (i0 + 1) % K;
+    return vals[i0] * (1 - f) + vals[i1] * f;
+  }
+
+  /* ------------------------------------------------------------------ physics */
+  const N = CONFIG.bodies;
+  const MAX_RINGS = 2;
+  let TOTAL = CONFIG.worms * N;                                // bodies in use
+  const pos = new Float32Array(MAX_RINGS * N * 3);
+  const prev = new Float32Array(MAX_RINGS * N * 3);
+  const vel = new Float32Array(MAX_RINGS * N * 3);
+  const L0 = 2 * PI * CONFIG.ringRadius / N;                    // rest length between neighbours
+  const DT = 1 / 60;
+
+  let rings = [];
+  function makeRings(count) {
+    for (const r of rings) disposeRing(r);
+    rings = Array.from({ length: count }, (_, k) => ({
+      index: k,
+      offset: k * N,                  // first body index
+      crawlU: -1,                     // -1 = not pulsing, else 0..1 within the pulse
+      rib: -0.5,                      // last dips() value
+      glow: 0.01,
+      stripes: null, mesh: null, tube: null, material: null,
+    }));
+    TOTAL = count * N;
+    pulse.active = false;
+    resetBodies();
+    buildRings();
+  }
+
+  function resetBodies() {
+    const single = rings.length === 1;
+    for (const ring of rings) {
+      const k = ring.index;
+      const cx = single ? 0 : (k === 0 ? -1.6 : 1.6), cy = k === 0 ? 3.6 : 4.4, cz = k === 0 ? 0.0 : 1.7;
+      const tilt = k === 0 ? 0.25 : -0.2;
+      for (let i = 0; i < N; i++) {
+        const a = PI / 2 + i / N * 2 * PI;                       // body 0 at the top of the ring
+        const o = (ring.offset + i) * 3;
+        const x = cos(a) * CONFIG.ringRadius, y = sin(a) * CONFIG.ringRadius;
+        pos[o] = cx + x;
+        pos[o + 1] = cy + y * cos(tilt);
+        pos[o + 2] = cz + y * sin(tilt);
+        prev[o] = pos[o]; prev[o + 1] = pos[o + 1]; prev[o + 2] = pos[o + 2];
+        vel[o] = vel[o + 1] = vel[o + 2] = 0;
+      }
+    }
+  }
+  function integrate(ring, other, dt) {
+    const gain = CONFIG.pull, damp = CONFIG.damping, hug = CONFIG.hug * CONFIG.pull;
+    const [ax, ay, az] = CONFIG.anchor, [gx, gy, gz] = CONFIG.gravity;
+    const cu = ring.crawlU;
+    const crawlV = cu >= 0 ? CONFIG.crawl * quadIn(cu) : 0;    // 1/s: how fast a body chases its predecessor
+    const blend = cu >= 0 ? cu * 0.5 : 0;
+    for (let i = 0; i < N; i++) {
+      const o = (ring.offset + i) * 3;
+      let vx = vel[o] * damp, vy = vel[o + 1] * damp, vz = vel[o + 2] * damp;
+      vy -= 1.0 * dt;
+      // body 0 hangs from the anchor, the far end of the chain feels gravity
+      const m = i / (N - 1) * 0.95;
+      const fx = (ax - pos[o]) * (1 - m) + gx * m;
+      const fy = (ay - pos[o + 1]) * (1 - m) + gy * m;
+      const fz = (az - pos[o + 2]) * (1 - m) + gz * m;
+      vx += fx * gain; vy += fy * gain; vz += fz * gain;
+      // hug: each body is drawn to the mirrored body of the other ring
+      if (other) {
+        const j = (other.offset + (N - 1 - i)) * 3;
+        vx += (pos[j] - pos[o]) * hug;
+        vy += (pos[j + 1] - pos[o + 1]) * hug;
+        vz += (pos[j + 2] - pos[o + 2]) * hug;
+      }
+      // crawl: chase the previous body along the chain (bodies 0 and 1 stay put)
+      if (crawlV > 0 && i >= 2) {
+        const p = o - 3;
+        vx += ((pos[p] - pos[o]) * crawlV - vx) * blend;
+        vy += ((pos[p + 1] - pos[o + 1]) * crawlV - vy) * blend;
+        vz += ((pos[p + 2] - pos[o + 2]) * crawlV - vz) * blend;
+      }
+      vel[o] = vx; vel[o + 1] = vy; vel[o + 2] = vz;
+      prev[o] = pos[o]; prev[o + 1] = pos[o + 1]; prev[o + 2] = pos[o + 2];
+      pos[o] += vx * dt; pos[o + 1] += vy * dt; pos[o + 2] += vz * dt;
+    }
+  }
+
+  function distanceConstraint(a, b, rest, onlyIfShorter) {
+    const oa = a * 3, ob = b * 3;
+    const dx = pos[ob] - pos[oa], dy = pos[ob + 1] - pos[oa + 1], dz = pos[ob + 2] - pos[oa + 2];
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 < 1e-12) return;
+    if (onlyIfShorter && d2 >= rest * rest) return;
+    const d = Math.sqrt(d2);
+    const k = (d - rest) / d * 0.5;
+    pos[oa] += dx * k; pos[oa + 1] += dy * k; pos[oa + 2] += dz * k;
+    pos[ob] -= dx * k; pos[ob + 1] -= dy * k; pos[ob + 2] -= dz * k;
+  }
+
+  function solve() {
+    const rc = CONFIG.tubeRadius;
+    const minDist = 2 * rc, minDist2 = minDist * minDist;
+    const bendRest = 2 * L0 * cos(CONFIG.bendAngle / 2);
+    const bendRest4 = 4 * L0 * cos(CONFIG.bendAngle * 1.5);            // 4 segments turning by 3 joint angles
+    const skip = Math.ceil(minDist / L0) + 1;                   // neighbours that overlap by design
+    const groundZ = CONFIG.groundZ + rc;
+    for (let it = 0; it < CONFIG.iterations; it++) {
+      for (const ring of rings) {
+        const b = ring.offset;
+        for (let i = 0; i < N; i++) distanceConstraint(b + i, b + (i + 1) % N, L0, false);
+        for (let i = 0; i < N; i++) distanceConstraint(b + i, b + (i + 2) % N, bendRest, true);
+        for (let i = 0; i < N; i++) distanceConstraint(b + i, b + (i + 4) % N, bendRest4, true);
+      }
+      // sphere collisions: everything against everything, except close chain neighbours
+      for (let a = 0; a < TOTAL; a++) {
+        const oa = a * 3, ra = a < N ? 0 : 1;
+        const px = pos[oa], py = pos[oa + 1], pz = pos[oa + 2];
+        for (let b = a + 1; b < TOTAL; b++) {
+          const rb = b < N ? 0 : 1;
+          if (ra === rb) {
+            const g = b - a, gap = Math.min(g, N - g);
+            if (gap <= skip) continue;
+          }
+          const ob = b * 3;
+          const dx = pos[ob] - px, dy = pos[ob + 1] - py, dz = pos[ob + 2] - pz;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 >= minDist2 || d2 < 1e-12) continue;
+          const d = Math.sqrt(d2), k = (d - minDist) / d * 0.5;
+          pos[oa] += dx * k; pos[oa + 1] += dy * k; pos[oa + 2] += dz * k;
+          pos[ob] -= dx * k; pos[ob + 1] -= dy * k; pos[ob + 2] -= dz * k;
+        }
+      }
+      for (let a = 0; a < TOTAL; a++) if (pos[a * 3 + 2] < groundZ) pos[a * 3 + 2] = groundZ;
+    }
+  }
+
+  function step(dt) {
+    for (const ring of rings) integrate(ring, rings.length > 1 ? rings[1 - ring.index] : null, dt);
+    solve();
+    const inv = 1 / dt;
+    for (let i = 0; i < TOTAL * 3; i++) vel[i] = (pos[i] - prev[i]) * inv;
+  }
+
+  /* ------------------------------------------------------------------ tube mesh */
+  class Tube {
+    constructor(S, M) {
+      this.S = S; this.M = M;
+      const count = S * M;
+      this.geometry = new THREE.BufferGeometry();
+      this.positions = new Float32Array(count * 3);
+      this.normals = new Float32Array(count * 3);
+      const uvs = new Float32Array(count * 2);
+      const index = new Uint32Array(S * M * 6);
+      let q = 0;
+      for (let s = 0; s < S; s++) {
+        for (let m = 0; m < M; m++) {
+          uvs[(s * M + m) * 2] = s / S;
+          uvs[(s * M + m) * 2 + 1] = m / M;
+          const a = s * M + m, b = s * M + (m + 1) % M;
+          const c = ((s + 1) % S) * M + m, d = ((s + 1) % S) * M + (m + 1) % M;
+          index[q++] = a; index[q++] = b; index[q++] = c;
+          index[q++] = b; index[q++] = d; index[q++] = c;
+        }
+      }
+      this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+      this.geometry.setAttribute('normal', new THREE.BufferAttribute(this.normals, 3));
+      this.geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      this.geometry.setIndex(new THREE.BufferAttribute(index, 1));
+      // scratch
+      this.curve = new THREE.CatmullRomCurve3([], true, 'centripetal');
+      this.centers = Array.from({ length: S + 1 }, () => new THREE.Vector3());
+      this.T = Array.from({ length: S + 1 }, () => new THREE.Vector3());
+      this.Nrm = Array.from({ length: S + 1 }, () => new THREE.Vector3());
+      this.B = Array.from({ length: S + 1 }, () => new THREE.Vector3());
+      this.radii = new Float32Array(S);
+      this.n0 = new THREE.Vector3(0, 0, 1);
+      this.tmp = new THREE.Vector3();
+    }
+    setPoints(n) {
+      if (this.curve.points.length !== n) this.curve.points = Array.from({ length: n }, () => new THREE.Vector3());
+    }
+    update(offset, n, radius, rib, stripes) {
+      const { S, M, curve, centers, T, Nrm, B, radii, tmp } = this;
+      this.setPoints(n);
+      for (let i = 0; i < n; i++) curve.points[i].fromArray(pos, (offset + i) * 3);
+      curve.updateArcLengths();
+      for (let s = 0; s <= S; s++) curve.getPoint((s % S) / S, centers[s]);
+      // tangents by central difference (closed)
+      for (let s = 0; s < S; s++) T[s].subVectors(centers[(s + 1) % S], centers[(s + S - 1) % S]).normalize();
+      T[S].copy(T[0]);
+      // parallel transport of the normal, seeded with last frame's for stability
+      tmp.copy(this.n0).addScaledVector(T[0], -this.n0.dot(T[0]));
+      if (tmp.lengthSq() < 1e-6) tmp.set(1, 0, 0).addScaledVector(T[0], -T[0].x);
+      Nrm[0].copy(tmp).normalize();
+      this.n0.copy(Nrm[0]);
+      for (let s = 1; s <= S; s++) {
+        Nrm[s].copy(Nrm[s - 1]).addScaledVector(T[s], -Nrm[s - 1].dot(T[s])).normalize();
+      }
+      // spread the closure mismatch around the loop so the last strip is not twisted
+      let theta = Math.acos(clamp(Nrm[0].dot(Nrm[S]), -1, 1)) / S;
+      if (T[0].dot(tmp.crossVectors(Nrm[0], Nrm[S])) > 0) theta = -theta;
+      for (let s = 0; s < S; s++) {
+        B[s].crossVectors(T[s], Nrm[s]);
+        if (s > 0) {
+          const c = cos(theta * s), si = sin(theta * s);
+          tmp.copy(Nrm[s]).multiplyScalar(c).addScaledVector(B[s], si);
+          Nrm[s].copy(tmp);
+          B[s].crossVectors(T[s], Nrm[s]);
+        }
+      }
+      // radius per ring from the stripe band
+      for (let s = 0; s < S; s++) radii[s] = radius * (1 + CONFIG.rib * rib * (sampleStripes(stripes, s / S) - 0.5));
+      // vertices
+      const P = this.positions, Nn = this.normals;
+      for (let s = 0; s < S; s++) {
+        const c = centers[s], t = T[s], nrm = Nrm[s], b = B[s], r = radii[s];
+        const segLen = tmp.subVectors(centers[(s + 1) % S], centers[(s + S - 1) % S]).length();
+        const drds = (radii[(s + 1) % S] - radii[(s + S - 1) % S]) / Math.max(segLen, 1e-6);
+        for (let m = 0; m < M; m++) {
+          const a = m / M * 2 * PI, ca = cos(a), sa = sin(a);
+          const rx = ca * nrm.x + sa * b.x, ry = ca * nrm.y + sa * b.y, rz = ca * nrm.z + sa * b.z;
+          const o = (s * M + m) * 3;
+          P[o] = c.x + rx * r; P[o + 1] = c.y + ry * r; P[o + 2] = c.z + rz * r;
+          let nx = rx - drds * t.x, ny = ry - drds * t.y, nz = rz - drds * t.z;
+          const il = 1 / Math.hypot(nx, ny, nz);
+          Nn[o] = nx * il; Nn[o + 1] = ny * il; Nn[o + 2] = nz * il;
+        }
+      }
+      this.geometry.attributes.position.needsUpdate = true;
+      this.geometry.attributes.normal.needsUpdate = true;
+    }
+  }
+
+  function disposeRing(ring) {
+    if (!ring.mesh) return;
+    scene.remove(ring.mesh); ring.tube.geometry.dispose(); ring.material.dispose(); ring.stripes.tex.dispose();
+    ring.mesh = null;
+  }
+  function buildRings() {
+    for (const ring of rings) {
+      disposeRing(ring);
+      ring.stripes = makeStripes(CONFIG.stripes, CONFIG.seed + ring.index * 7919);
+      const S = clamp(CONFIG.stripes * 3, 384, 768);
+      ring.tube = new Tube(S, CONFIG.radialSegments);
+      ring.material = new THREE.MeshPhysicalMaterial({
+        map: ring.stripes.tex,
+        emissive: 0xffffff, emissiveMap: ring.stripes.tex, emissiveIntensity: 0,
+        roughness: 0.75, metalness: 0.1,
+        clearcoat: 1, clearcoatRoughness: 0.2, reflectivity: 1,
+      });
+      ring.mesh = new THREE.Mesh(ring.tube.geometry, ring.material);
+      ring.mesh.castShadow = ring.mesh.receiveShadow = true;
+      ring.mesh.frustumCulled = false;
+      scene.add(ring.mesh);
+    }
+  }
+
+  /* ------------------------------------------------------------------ audio */
+  let audio = null, audioStarting = false;
+  async function initAudio() {
+    if (audio || audioStarting || typeof Tone === 'undefined') return;
+    audioStarting = true;
+    try {
+      await Tone.start();
+      const phaser = new Tone.Phaser({ frequency: 15, octaves: 5, baseFrequency: 1000 }).toDestination();
+      const panR = new Tone.Panner(0.75).connect(phaser);
+      const panL = new Tone.Panner(-0.75).connect(phaser);
+      const settings = {
+        pitchDecay: 0.25, octaves: 4, oscillator: { type: 'sine' },
+        envelope: { attack: 0.1, decay: 0.9, sustain: 0.01, release: 1, attackCurve: 'exponential' },
+      };
+      audio = { phaser, synths: [new Tone.MembraneSynth(settings).connect(panR), new Tone.MembraneSynth(settings).connect(panL)] };
+    } catch (e) { console.warn('[slug] audio unavailable', e); }
+    audioStarting = false;
+  }
+  function kick(ringIndex, ms) {
+    if (!audio || !CONFIG.sound) return;
+    try { audio.synths[ringIndex].triggerAttackRelease('E1', Math.max(ms / 1000, 0.05)); } catch (e) { /* too fast: skip */ }
+  }
+
+  /* ------------------------------------------------------------------ pulses */
+  let duration = CONFIG.pulse;              // ms; dragging overrides it
+  const pulse = { ring: 0, start: 0, length: CONFIG.pulse, active: false };
+  function startPulse(ringIndex, now) {
+    pulse.ring = ringIndex; pulse.start = now; pulse.length = duration; pulse.active = true;
+    kick(ringIndex, pulse.length);
+  }
+  function updatePulses(now) {
+    if (!pulse.active) startPulse(0, now);
+    let u = (now - pulse.start) / pulse.length;
+    if (u >= 1) {
+      const done = rings[pulse.ring];
+      done.crawlU = -1; done.rib = dips(1); done.glow = emis(1);
+      startPulse((pulse.ring + 1) % rings.length, now);
+      u = 0;
+    }
+    const r = rings[pulse.ring];
+    r.crawlU = u; r.rib = dips(u); r.glow = emis(u);
+    for (const ring of rings) ring.material.emissiveIntensity = ring.glow * CONFIG.glow;
+  }
+
+  makeRings(CONFIG.worms);
+
+  /* ------------------------------------------------------------------ input */
+  let dragging = false;
+  function setFromPointer(e) {
+    const dy = Math.abs(e.clientY - window.innerHeight / 2);
+    const dx = Math.abs(e.clientX - window.innerWidth / 2);
+    duration = mapLinear(dy, 0, window.innerHeight / 2, 50, 250);
+    if (audio) audio.phaser.baseFrequency = mapLinear(dx, 0, window.innerWidth / 2, 20, 400);
+  }
+  const el = renderer.domElement;
+  el.addEventListener('pointerdown', e => { initAudio(); dragging = true; setFromPointer(e); });
+  el.addEventListener('pointermove', e => { if (dragging) setFromPointer(e); });
+  const release = () => { dragging = false; duration = CONFIG.pulse; };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('pointerleave', release);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* ------------------------------------------------------------------ loop */
+  let last = null, acc = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (last === null) last = now;
+    acc += Math.min((now - last) / 1000, 0.1);
+    last = now;
+    updatePulses(now);
+    let steps = 0;
+    while (acc >= DT && steps < 3) { step(DT); acc -= DT; steps++; }
+    if (acc >= DT) acc = 0;
+    if (audio && !dragging) audio.phaser.baseFrequency = lerp(audio.phaser.baseFrequency, 1000, 0.01);
+    for (const ring of rings) ring.tube.update(ring.offset, N, CONFIG.tubeRadius, ring.rib, ring.stripes.vals);
+    controls.update();
+    renderer.render(scene, camera);
+    syncPanel();
+  }
+  requestAnimationFrame(frame);
+
+  /* ------------------------------------------------------------------ panel */
+  const panel = document.getElementById('debug');
+  const hint = document.getElementById('hint');
+  let panelOpen = CONFIG.showPanel;
+  function setPanel(open) { panelOpen = open; panel.hidden = !open; hint.hidden = open; }
+  const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  hint.textContent = touch ? 'tap here for controls' : 'press d for controls';
+  hint.classList.toggle('touch', touch);
+  hint.addEventListener('click', () => setPanel(true));
+  document.getElementById('dbg-close').addEventListener('click', () => setPanel(false));
+  window.addEventListener('keydown', e => { if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey) setPanel(!panelOpen); });
+  setPanel(panelOpen);
+
+  const sliders = {
+    pulse: 'dbg-pulse', crawl: 'dbg-crawl', pull: 'dbg-pull', hug: 'dbg-hug', damping: 'dbg-damping',
+    rib: 'dbg-rib', glow: 'dbg-glow', tubeRadius: 'dbg-radius',
+  };
+  for (const key in sliders) {
+    const s = document.getElementById(sliders[key]);
+    s.value = String(CONFIG[key]);
+    s.addEventListener('input', e => {
+      CONFIG[key] = parseFloat(e.target.value);
+      if (key === 'pulse' && !dragging) duration = CONFIG.pulse;
+    });
+  }
+  const stripesSel = document.getElementById('dbg-stripes');
+  stripesSel.value = String(CONFIG.stripes);
+  stripesSel.addEventListener('change', e => { CONFIG.stripes = parseInt(e.target.value, 10); buildRings(); });
+  const wormsSel = document.getElementById('dbg-worms');
+  wormsSel.value = String(CONFIG.worms);
+  wormsSel.addEventListener('change', e => { CONFIG.worms = parseInt(e.target.value, 10); makeRings(CONFIG.worms); });
+
+  const palSel = document.getElementById('dbg-palette');
+  const groups = {};
+  for (const p of PALETTES) {
+    if (!groups[p.group]) { groups[p.group] = document.createElement('optgroup'); groups[p.group].label = p.group; palSel.appendChild(groups[p.group]); }
+    const o = document.createElement('option'); o.textContent = p.name; groups[p.group].appendChild(o);
+  }
+  palSel.value = CONFIG.palette;
+  function usePalette(name) { CONFIG.palette = name; palSel.value = name; loadPalette(name); applyPalette(); buildRings(); }
+  palSel.addEventListener('change', e => usePalette(e.target.value));
+  const customIn = document.getElementById('dbg-custom');
+  function applyCustom() {
+    const hex = parseHexList(customIn.value);
+    if (!hex) { customIn.style.borderColor = '#f66'; return; }
+    customIn.style.borderColor = '';
+    PALETTES.find(p => p.name === 'custom').hex = hex.join('-');
+    usePalette('custom');
+  }
+  document.getElementById('dbg-apply').addEventListener('click', applyCustom);
+  customIn.addEventListener('keydown', e => { if (e.key === 'Enter') applyCustom(); e.stopPropagation(); });
+  document.getElementById('dbg-sharelink').addEventListener('keydown', e => e.stopPropagation());
+
+  // camera
+  const camSliders = { fov: 'dbg-fov', distance: 'dbg-dist', tilt: 'dbg-tilt', swing: 'dbg-swing' };
+  for (const key in camSliders) {
+    const el = document.getElementById(camSliders[key]);
+    el.addEventListener('input', e => setCamera({ [key]: parseFloat(e.target.value) }));
+  }
+  const orbitBox = document.getElementById('dbg-orbit');
+  orbitBox.checked = controls.enableRotate;
+  orbitBox.addEventListener('change', e => { controls.enableRotate = e.target.checked; });
+  const autoBox = document.getElementById('dbg-auto');
+  autoBox.checked = controls.autoRotate;
+  autoBox.addEventListener('change', e => setAutoOrbit(e.target.checked));
+  document.getElementById('dbg-camreset').addEventListener('click', e => {
+    camera.position.copy(CAMERA_HOME); camera.fov = 15; camera.updateProjectionMatrix();
+    autoBox.checked = false; setAutoOrbit(false); e.target.blur();
+  });
+  const soundBox = document.getElementById('dbg-sound');
+  soundBox.checked = CONFIG.sound;
+  soundBox.addEventListener('change', e => { CONFIG.sound = e.target.checked; if (CONFIG.sound) initAudio(); });
+  document.getElementById('dbg-restart').addEventListener('click', e => { resetBodies(); e.target.blur(); });
+  document.getElementById('dbg-recolour').addEventListener('click', e => { CONFIG.seed = newSeed(); buildRings(); e.target.blur(); });
+
+  // share: put the whole setup in the URL and copy it
+  function shareLink() {
+    const q = new URLSearchParams();
+    for (const k of SHARE_KEYS) q.set(k, String(+(+CONFIG[k]).toFixed(3)));
+    q.set('pal', CONFIG.palette);
+    if (CONFIG.palette === 'custom') q.set('hex', PALETTES.find(p => p.name === 'custom').hex);
+    const cam = getCamera();
+    for (const k of ['fov', 'distance', 'tilt', 'swing']) q.set(k, cam[k].toFixed(1));
+    if (controls.autoRotate) q.set('auto', '1');
+    const url = location.origin + location.pathname + '#' + q.toString();
+    history.replaceState(null, '', '#' + q.toString());
+    return url;
+  }
+  const shareBtn = document.getElementById('dbg-share');
+  const shareOut = document.getElementById('dbg-sharelink');
+  shareBtn.addEventListener('click', async () => {
+    const url = shareLink();
+    shareOut.value = url;
+    shareOut.hidden = false;
+    let copied = false;
+    try { await navigator.clipboard.writeText(url); copied = true; } catch (e) { /* no clipboard: the link is shown instead */ }
+    shareBtn.textContent = copied ? '✓ link copied' : 'copy the link below';
+    setTimeout(() => { shareBtn.textContent = '🔗 share'; }, 2000);
+    shareOut.select();
+  });
+  function syncPanel() {
+    if (!panelOpen) return;
+    for (const key in sliders) {
+      const s = document.getElementById(sliders[key]);
+      s.nextElementSibling.textContent = key === 'pulse' ? String(Math.round(duration)) : parseFloat(s.value).toFixed(2);
+    }
+    const cam = getCamera();                                               // sliders follow the orbit unless being dragged
+    for (const key in camSliders) {
+      const el = document.getElementById(camSliders[key]);
+      if (document.activeElement !== el) el.value = String(cam[key]);
+      el.nextElementSibling.textContent = key === 'fov' || key === 'distance' ? cam[key].toFixed(1) : cam[key].toFixed(0) + '°';
+    }
+  }
+
+  // test hooks
+  window.__slug = { CONFIG, get rings() { return rings; }, pos, vel, resetBodies, buildRings, makeRings, usePalette, setCamera, getCamera, camera, renderer, scene };
+  </script>
+</body>
+</html>
