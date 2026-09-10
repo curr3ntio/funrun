@@ -3,30 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Funrun</title>
-  <link rel="stylesheet" href="style.css">
+  <title>funrun</title>
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #fff; color: #111;
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-weight: 600; letter-spacing: 0.02em; margin: 0 0 24px; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { padding: 14px 0; border-top: 1px solid #e5e5e5; }
+    li:last-child { border-bottom: 1px solid #e5e5e5; }
+    a { color: inherit; text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; }
+    p { margin: 2px 0 0; color: #666; font-size: 14px; }
+  </style>
 </head>
 <body>
-
-  <canvas id="paint" aria-hidden="true"></canvas>
-
-  <button id="hint" type="button">press d for controls</button>
-
-  <div id="debug">
-    <label>time <input id="dbg-time" type="range" min="0" max="25" step="0.01" value="0"><span></span></label>
-    <label>speed <input id="dbg-speed" type="range" min="0.01" max="5" step="0.01" value="1"><span></span></label>
-    <label>speed variation <input id="dbg-speedvar" type="range" min="0" max="4" step="0.01" value="1"><span></span></label>
-    <label>size variation <input id="dbg-sizevar" type="range" min="0" max="4" step="0.01" value="1"><span></span></label>
-    <label>noise scale <input id="dbg-noise" type="range" min="0.1" max="5" step="0.01" value="1"><span></span></label>
-    <label>drip size <input id="dbg-size" type="range" min="0.1" max="6" step="0.01" value="1"><span></span></label>
-    <label>run length <input id="dbg-runlen" type="range" min="0" max="8" step="0.01" value="1"><span></span></label>
-    <label>thin ↔ thick <input id="dbg-thick" type="range" min="0" max="4" step="0.01" value="1"><span></span></label>
-    <label>logo size <input id="dbg-logo" type="range" min="0.05" max="1.5" step="0.01" value="0.62"><span></span></label>
-    <label>shading <input id="dbg-gloss" type="range" min="0" max="3" step="0.01" value="0"><span></span></label>
-    <label><input id="dbg-pause" type="checkbox"> pause timeline</label>
-    <div class="row"><button id="dbg-restart" type="button">↻ restart</button><button id="dbg-close" type="button" class="ghost">✕ hide</button></div>
-  </div>
-
-  <script src="paint.js"></script>
+  <main>
+    <h1>funrun</h1>
+    <ul>
+      <li><a href="pour/">Paint Pour</a><p>black and white paint pouring down the screen, raw WebGL2, no dependencies</p></li>
+      <li><a href="slug/">Slug Luv</a><p>striped worms tangled on a paper table, three.js and a small physics solver, sound on click</p></li>
+    </ul>
+  </main>
 </body>
 </html>
