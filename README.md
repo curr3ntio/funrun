@@ -8,6 +8,7 @@ folders, so they cannot interfere with each other.
 | -------- | ----------------------------------------------------------------------- |
 | `pour/`  | Paint Pour: black and white paint pouring down the screen, raw WebGL2   |
 | `slug/`  | Slug Luv: striped worms on a paper table, three.js + a tiny physics solver |
+| `bubbly/` | Poppin' Bubbally: a jostling cluster of soap bubbles, three.js + cannon-es, click to pop |
 
 The root `index.html` is a plain list linking to them.
 
@@ -20,7 +21,7 @@ python3 -m http.server 8765
 ```
 
 Then visit `http://localhost:8765/` for the list, or `/pour/` and `/slug/`
-directly. Pages that use ES modules (like `slug/`) need `http://`, not `file://`.
+directly. Pages that use ES modules (like `slug/` and `bubbly/`) need `http://`, not `file://`.
 
 ## Adding an experiment
 
