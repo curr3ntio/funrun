@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hologram Particles</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #1a1816; --surface: #2a2826; --border: #3a3836; --text: #d4cfc8;
+      --muted: #8a847a; --accent: #c8b89a; --accent-dim: #9a8e78; --white: #f0ece6;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0e0d0c; color: var(--text); font-family: var(--font-mono); }
+    #container { position: fixed; inset: 0; touch-action: none; }
+    #container canvas { display: block; width: 100% !important; height: 100% !important; }
+
+    /* ── model selector ── */
+    #selector { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 20px; }
+    #selector .arrow { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: none; border: 0; cursor: pointer; color: rgba(255,255,255,0.67); padding: 0; transition: color 0.2s; }
+    #selector .arrow:hover { color: #fff; }
+    #selector .arrow:hover svg { filter: drop-shadow(0 0 2px rgba(255,255,255,0.58)); }
+    #selector .track {
+      position: relative; display: flex; align-items: center; width: 440px; height: 48px; overflow: hidden;
+      mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);
+    }
+    #selector .item {
+      position: absolute; left: 50%; top: 50%; transform: translate(calc(-50% + var(--offset, 0) * 160px), -50%);
+      transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+      display: flex; align-items: center; justify-content: center; padding: 10px 20px;
+      background: none; border: 0; cursor: pointer; white-space: nowrap; opacity: 0.28;
+    }
+    #selector .item:hover:not(.active) { opacity: 0.55; }
+    #selector .item.active { opacity: 1; cursor: default; }
+    #selector .label { font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255,255,255,0.67); user-select: none; text-shadow: 0 0 8px #fff; transition: color 0.25s; }
+    #selector .active .label { color: #fff; }
+    #selector .corner { position: absolute; width: 8px; height: 8px; border: 0 solid rgba(255,255,255,0.67); pointer-events: none; opacity: 0; animation: cornerIn 0.3s 0.1s ease forwards; }
+    #selector .item:not(.active) .corner { display: none; }
+    @keyframes cornerIn { to { opacity: 1; } }
+    #selector .tl { top: 4px; left: 4px; border-top-width: 1px; border-left-width: 1px; }
+    #selector .tr { top: 4px; right: 4px; border-top-width: 1px; border-right-width: 1px; }
+    #selector .bl { bottom: 4px; left: 4px; border-bottom-width: 1px; border-left-width: 1px; }
+    #selector .br { bottom: 4px; right: 4px; border-bottom-width: 1px; border-right-width: 1px; }
+
+    /* ── buttons ── */
+    #buttons { position: fixed; bottom: 46px; right: 24px; z-index: 55; display: flex; gap: 8px; }
+    #buttons button {
+      display: flex; align-items: center; justify-content: center; height: 36px; width: 36px; padding: 0;
+      border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); cursor: pointer;
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; transition: border-color 0.2s, background 0.2s, opacity 0.2s;
+    }
+    #buttons button:hover { border-color: var(--accent); }
+    #buttons button.on { border-color: var(--accent); background: var(--surface); }
+    #buttons button.off { opacity: 0.6; }
+    #buttons svg[hidden] { display: none; }
+    #buttons .sep { width: 1px; height: 20px; background: var(--border); opacity: 0.5; align-self: center; }
+
+    /* ── control panel (Tweakpane) ── */
+    #pane {
+      position: fixed; top: 8px; right: 8px; width: 300px; max-height: calc(100vh - 16px); overflow: auto; z-index: 60;
+      --tp-base-background-color: #1a1816; --tp-base-shadow-color: rgba(0,0,0,0.2);
+      --tp-button-background-color: #2a2826; --tp-button-background-color-hover: #3a3836;
+      --tp-button-background-color-active: #5c5854; --tp-button-foreground-color: #d4cfc8;
+      --tp-container-background-color: #1e1c1a; --tp-container-background-color-hover: #242220;
+      --tp-container-background-color-active: #2a2826; --tp-container-foreground-color: #d4cfc8;
+      --tp-groove-foreground-color: #3a3836; --tp-input-background-color: #2a2826;
+      --tp-input-background-color-hover: #3a3836; --tp-input-background-color-active: #5c5854;
+      --tp-input-foreground-color: #d4cfc8; --tp-label-foreground-color: #8a847a;
+      --tp-monitor-background-color: #2a2826; --tp-monitor-foreground-color: #d4cfc8;
+      --tp-font-family: var(--font-mono);
+    }
+    #pane[hidden] { display: none; }
+    #pane .tp-rotv { font-family: var(--font-mono); font-size: 10px; }
+    #pane .tp-fldv_t, #pane .tp-rotv_t { font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+
+    #drop { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.2em; color: #fff; pointer-events: none; }
+    #drop.show { display: flex; }
+
+    @media (max-width: 640px) {
+      #selector .track { width: 300px; }
+      #buttons { bottom: 40px; right: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container"></div>
+
+  <nav id="selector">
+    <button class="arrow" id="prev" aria-label="Previous model">
+      <svg width="15" height="15" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><polyline points="7,1 3,5 7,9"/></svg>
+    </button>
+    <div class="track" id="track"></div>
+    <button class="arrow" id="next" aria-label="Next model">
+      <svg width="15" height="15" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><polyline points="3,1 7,5 3,9"/></svg>
+    </button>
+  </nav>
+
+  <div id="buttons">
+    <button id="preset" title="Switch preset">
+      <svg id="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" hidden><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+    <div class="sep"></div>
+    <button id="toggle-pane" class="off" title="Show controls">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><line x1="2" y1="4" x2="14" y2="4"/><circle cx="10" cy="4" r="1.5" fill="currentColor"/><line x1="2" y1="8" x2="14" y2="8"/><circle cx="5" cy="8" r="1.5" fill="currentColor"/><line x1="2" y1="12" x2="14" y2="12"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/></svg>
+    </button>
+  </div>
+
+  <div id="pane" hidden></div>
+  <div id="drop">drop the .glb</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+      "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+      "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.tsl.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+      "tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three/webgpu';
+  import {
+    positionLocal, normalLocal, normalView, attribute, sin, cos, time, uniform, vec2, vec3, float, fract,
+    positionWorld, normalize, dot, clamp, min, max, mix, step, pow, abs, smoothstep, texture as tslTexture,
+    uv, pass, storage, instanceIndex, Fn, mx_noise_float, mx_fractal_noise_vec3,
+  } from 'three/tsl';
+  import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+  import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+  import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
+  import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { Pane } from 'tweakpane';
+
+  // Rebuilt after cortiz2894/hologram-particles (a replica of igloo.inc).
+  // Every number below is that playground's default; the light/dark presets
+  // are its presets.
+
+  // ---------------------------------------------------------------- parameters
+
+  const PRESETS = {
+    light: {
+      color: '#99a5b7', ambient: 0.2, wrap: 0.35, volumeStrength: 0.67, mouseGlowColor: '#ffada7',
+      light1Color: '#ffffff', light1Intensity: 1.5, light2Color: '#f2e0e0', light2Intensity: 1.1,
+      cylColor: '#ffffff', gridColor: '#c8d4de', gridBaseOpacity: 0.31,
+      ringColor: '#ffffff', ringThickness: 0.03, ringBrightness: 3.0, ringOpacity: 0.9,
+      bgColorCenter: '#495155', bgColorMid: '#495258', bgColorEdge: '#305269',
+    },
+    dark: {
+      color: '#d1e3ff', ambient: 0.08, wrap: 0.31, volumeStrength: 0.98, mouseGlowColor: '#ffffff',
+      light1Color: '#8bb4d5', light1Intensity: 1.75, light2Color: '#8bb4d5', light2Intensity: 1.35,
+      cylColor: '#99c4f0', gridColor: '#c8d4de', gridBaseOpacity: 0.06,
+      ringColor: '#809fde', ringThickness: 0.035, ringBrightness: 4.8, ringOpacity: 0.47,
+      bgColorCenter: '#010407', bgColorMid: '#010408', bgColorEdge: '#000000',
+    },
+  };
+
+  const P = {
+    particleCount: 75000,
+    // material
+    color: '#99a5b7', ambient: 0.2, wrap: 0.35, volumeStrength: 0.67, sphereSize: 0.02,
+    modelX: 0, modelY: -1.2, modelZ: 0,
+    // interaction glow
+    mouseGlowColor: '#ffada7', glowSensitivity: 1.5, mouseGlowActive: 6, mouseGlowDecay: 0.3, mouseGlowPow: 6.0, mouseLerp: 1.5,
+    // pusher physics
+    pusherVisible: false, pusherRadius: 0.05, pusherInfluence: 0.4, pusherFalloff: 2.5, pusherDepth: 2, pusherFollow: 12,
+    pusherRadialStrength: 0, pusherMoveStrength: 121, pusherFlowBias: 1.3, pusherSpring: 27.0, pusherDamping: 22.1,
+    pusherMaxOffset: 13.8, pusherTurbulence: 70, pusherTurbScale: 2.2, pusherTurbSpeed: 1.85,
+    // post fx
+    bloomStrength: 0.65, bloomRadius: 0.65, bloomThreshold: 0.34, chromaticStr: 0.05,
+    // lights
+    light1X: 0, light1Y: 5, light1Z: 2, light1Color: '#ffffff', light1Intensity: 1.5,
+    light2X: 0, light2Y: -5, light2Z: -2, light2Color: '#f2e0e0', light2Intensity: 1.1,
+    // animation
+    floatAmp: 0.01, autoRotateSpeed: 2.53, noiseAmp: 0.72, noiseScale: 3.0, noiseSpeed: 1, noiseGain: 0.65,
+    maskScale: 0.95, maskSpeed: 0.5, maskContrast: 3.8,
+    // transition
+    transitionDeformDur: 0.4, transitionMorphDur: 2.05, transitionReformDur: 0.45, transitionMaskContrast: 1.65, transitionGlowScale: 1.0,
+    entranceMorphDur: 1.8, entranceReformDur: 1.1,
+    // cylinder
+    cylVisible: true, cylCollision: true, cylBounce: 0.5, cylHoldTime: 0.05, cylColor: '#ffffff', cylRadius: 1.95, cylHeight: 5.3,
+    cylNoiseScale: 0.2, cylLineWidth: 0.22, cylFresnelPow: 1.6, cylBaseOpacity: 0.0, cylLineOpacity: 1, cylNoiseSpeed: 0.15,
+    cylPulseSpeed: 2.5, cylPulseAmp: 0.68, cylPulseEasing: 2.5, cylWaveFreq: 2.0, cylTexRepeat: 8.5, cylY: -0.85,
+    // dot grid
+    gridVisible: true, gridColor: '#c8d4de', gridBaseOpacity: 0.31, gridWaveAmp: 0.73, gridNoiseScale: 0.44, gridWaveSpeed: 0.62, gridDensity: 2.15, gridDotSize: 0.04,
+    // rings
+    ringVisible: true, ringColor: '#ffffff', ringThickness: 0.03, ringBrightness: 3.0, ringOpacity: 0.9, ringRadius: 1.95, ringGap: 20,
+    // background
+    bgColorCenter: '#495155', bgColorMid: '#495258', bgColorEdge: '#305269',
+    // camera
+    camIntensity: 1, camStiffness: 3.0, camDamping: 4.0,
+  };
+  let preset = 'light';
+
+  const smoothstepJS = (p) => p * p * (3 - 2 * p);
+
+  // ---------------------------------------------------------------- models
+
+  // The original samples Sketchfab GLBs of BD-1 and BB-8. Those are not shipped
+  // here, so the two droids are built from primitives; any mesh works since the
+  // particles are sampled from the surface. Drop a .glb to use a real one.
+  function tube(a, b, r, seg = 12) {
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg));
+    m.position.copy(a).addScaledVector(dir, 0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    return m;
+  }
+  const box = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d)); m.position.set(x, y, z); return m; };
+  const ball = (r, x, y, z) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 12)); m.position.set(x, y, z); return m; };
+  const lens = (r, depth, x, y, z) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, depth, 24)); m.position.set(x, y, z); m.rotation.x = Math.PI / 2; return m; };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  function buildBD1() {
+    const g = new THREE.Group();
+    g.add(box(1.5, 0.85, 1.05, 0, 3.55, 0.05));                 // head
+    g.add(lens(0.3, 0.14, 0.32, 3.62, 0.6), lens(0.18, 0.14, -0.36, 3.6, 0.6));
+    g.add(box(0.16, 0.32, 0.34, 0.82, 3.5, -0.1), box(0.16, 0.32, 0.34, -0.82, 3.5, -0.1));
+    const ant = tube(V(-0.5, 3.95, -0.25), V(-0.68, 5.15, -0.35), 0.035, 8); g.add(ant); // antenna
+    g.add(ball(0.06, -0.68, 5.15, -0.35));
+    g.add(tube(V(0, 2.7, 0), V(0, 3.15, 0), 0.12));             // neck
+    g.add(box(0.85, 0.75, 0.6, 0, 2.45, 0));                    // body
+    g.add(box(1.25, 0.2, 0.35, 0, 2.05, 0));                    // hips
+    for (const x of [-0.5, 0.5]) {
+      const hip = V(x, 2.05, 0), knee = V(x, 1.25, -0.5), ankle = V(x, 0.3, 0.05);
+      const joint = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.14, 16)); joint.position.copy(hip); joint.rotation.z = Math.PI / 2; g.add(joint);
+      g.add(tube(hip, knee, 0.1), ball(0.15, knee.x, knee.y, knee.z), tube(knee, ankle, 0.09), ball(0.12, ankle.x, ankle.y, ankle.z));
+      g.add(box(0.28, 0.16, 0.7, x, 0.08, 0.2), box(0.3, 0.1, 0.2, x, 0.05, 0.62));
+    }
+    return g;
+  }
+
+  function buildBB8() {
+    const g = new THREE.Group();
+    g.add(ball(1, 0, 1, 0));
+    g.children[0].geometry = new THREE.SphereGeometry(1, 48, 32);
+    // panel rings on the body
+    const dirs = [V(0, 0.15, 1), V(1, 0.2, 0.25), V(-1, 0.1, 0.3), V(0.2, -0.1, -1), V(0.55, -0.75, 0.4), V(-0.5, -0.7, -0.45), V(0.1, 0.85, -0.5)];
+    for (const d of dirs) {
+      d.normalize();
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.028, 8, 40));
+      ring.position.copy(d).multiplyScalar(0.91).add(V(0, 1, 0));
+      ring.quaternion.setFromUnitVectors(V(0, 0, 1), d);
+      const inner = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.022, 8, 32));
+      inner.position.copy(d).multiplyScalar(0.98).add(V(0, 1, 0));
+      inner.quaternion.copy(ring.quaternion);
+      g.add(ring, inner);
+    }
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.6, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2)); dome.position.set(0, 1.93, 0); g.add(dome);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.035, 8, 48)); rim.position.set(0, 1.93, 0); rim.rotation.x = Math.PI / 2; g.add(rim);
+    g.add(lens(0.13, 0.12, 0, 2.25, 0.52), lens(0.06, 0.1, 0.22, 2.4, 0.42));
+    g.add(tube(V(0.05, 2.5, -0.05), V(0.05, 2.98, -0.05), 0.02, 6), tube(V(-0.12, 2.5, -0.02), V(-0.12, 2.82, -0.02), 0.02, 6));
+    return g;
+  }
+
+  const MODELS = [
+    { id: 'bd1', label: 'BD-1', build: buildBD1 },
+    { id: 'bb8', label: 'BB-8', build: buildBB8 },
+  ];
+
+  // Normalise any object to the original's frame (3 units tall-ish, feet at
+  // y = 0), merge its meshes, and sample `count` surface points with normals.
+  const geometryCache = new Map();
+  async function sampleGeometry(model, count) {
+    const key = model.id + ':' + count;
+    if (geometryCache.has(key)) return geometryCache.get(key);
+
+    const root = await model.build();
+    root.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(root);
+    const centre = bbox.getCenter(new THREE.Vector3());
+    root.position.sub(centre);
+    root.updateMatrixWorld(true);
+    const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    root.scale.setScalar(maxDim > 0 ? 3 / maxDim : 1);
+    root.updateMatrixWorld(true);
+    root.position.y -= new THREE.Box3().setFromObject(root).min.y;
+    root.updateMatrixWorld(true);
+
+    const parts = [];
+    root.traverse((child) => {
+      if (!child.isMesh) return;
+      let geo = child.geometry.clone();
+      if (geo.index) geo = geo.toNonIndexed();
+      geo.applyMatrix4(child.matrixWorld);
+      if (!geo.attributes.normal) geo.computeVertexNormals();
+      for (const name of Object.keys(geo.attributes)) if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
+      geo.morphAttributes = {};
+      parts.push(geo);
+    });
+    const merged = mergeGeometries(parts, false);
+    const sampler = new MeshSurfaceSampler(new THREE.Mesh(merged)).build();
+
+    const positions = new Float32Array(count * 3);
+    const normals = new Float32Array(count * 3);
+    const p = new THREE.Vector3(), n = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      sampler.sample(p, n);
+      p.toArray(positions, i * 3);
+      n.normalize().toArray(normals, i * 3);
+    }
+    parts.forEach((g) => g.dispose());
+    merged.dispose();
+    const data = { positions, normals };
+    geometryCache.set(key, data);
+    return data;
+  }
+
+  // ---------------------------------------------------------------- textures
+
+  // Plexus texture for the cylinder: jittered grid points, triangulated, drawn
+  // as thin lines with bright vertices, tiling in both directions.
+  function makePlexusTexture() {
+    const S = 1024, N = 9;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = S;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, S, S);
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const cell = S / N;
+    const pts = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) pts.push([(i + 0.15 + rnd() * 0.7) * cell, (j + 0.15 + rnd() * 0.7) * cell]);
+    // grid point (i, j) with wrap-around, shifted by a whole tile when it wraps
+    const wrapPt = (i, j) => { const p = pts[((j % N) + N) % N * N + ((i % N) + N) % N]; return [p[0] + Math.floor(i / N) * S, p[1] + Math.floor(j / N) * S]; };
+    const edges = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const a = wrapPt(i, j), b = wrapPt(i + 1, j), c = wrapPt(i, j + 1), d = wrapPt(i + 1, j + 1);
+      edges.push([a, b], [a, c]);
+      // split the quad along its shorter diagonal
+      const ad = Math.hypot(a[0] - d[0], a[1] - d[1]), bc = Math.hypot(b[0] - c[0], b[1] - c[1]);
+      edges.push(ad < bc ? [a, d] : [b, c]);
+    }
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineCap = 'round';
+    for (const [ox, oy] of [[0, 0], [-S, 0], [S, 0], [0, -S], [0, S], [-S, -S], [S, S], [-S, S], [S, -S]]) {
+      ctx.beginPath();
+      for (const [a, b] of edges) { ctx.moveTo(a[0] + ox, a[1] + oy); ctx.lineTo(b[0] + ox, b[1] + oy); }
+      ctx.stroke();
+      for (const p of pts) {
+        const g = ctx.createRadialGradient(p[0] + ox, p[1] + oy, 0, p[0] + ox, p[1] + oy, 9);
+        g.addColorStop(0, '#fff'); g.addColorStop(0.35, 'rgba(255,255,255,0.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p[0] + ox, p[1] + oy, 9, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = 16;
+    return tex;
+  }
+
+  // ---------------------------------------------------------------- renderer & scene
+
+  const container = document.getElementById('container');
+  const renderer = new THREE.WebGPURenderer({ antialias: true, alpha: true });
+  await renderer.init();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+  const isWebGPU = renderer.backend.isWebGPUBackend === true;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 200);
+  camera.position.set(0, 0, 6);
+
+  // radial gradient background
+  const bgCanvas = document.createElement('canvas');
+  bgCanvas.width = bgCanvas.height = 512;
+  const bgCtx = bgCanvas.getContext('2d');
+  const bgTex = new THREE.CanvasTexture(bgCanvas);
+  scene.background = bgTex;
+  function redrawBg() {
+    const w = 512, h = 512;
+    const grad = bgCtx.createRadialGradient(w * 0.48, h * 0.45, 0, w * 0.5, h * 0.5, w * 0.8);
+    grad.addColorStop(0, P.bgColorCenter);
+    grad.addColorStop(0.45, P.bgColorMid);
+    grad.addColorStop(1, P.bgColorEdge);
+    bgCtx.fillStyle = grad;
+    bgCtx.fillRect(0, 0, w, h);
+    bgTex.needsUpdate = true;
+  }
+  redrawBg();
+
+  // dot grid, far behind
+  const grid = {
+    color: uniform(new THREE.Color(P.gridColor)), baseOpacity: uniform(P.gridBaseOpacity), waveAmp: uniform(P.gridWaveAmp),
+    noiseScale: uniform(P.gridNoiseScale), waveSpeed: uniform(P.gridWaveSpeed), density: uniform(P.gridDensity), dotSize: uniform(P.gridDotSize),
+  };
+  {
+    const mat = new THREE.MeshBasicNodeMaterial();
+    mat.transparent = true; mat.depthWrite = false; mat.depthTest = true;
+    const cellPos = positionWorld.xy.mul(grid.density);
+    const fracCell = fract(cellPos).sub(vec2(0.5, 0.5));
+    const dotShape = float(1).sub(smoothstep(float(0), grid.dotSize, fracCell.length()));
+    const noiseCoord = vec3(positionWorld.x.mul(grid.noiseScale), positionWorld.y.mul(grid.noiseScale), time.mul(grid.waveSpeed));
+    const wave = mx_noise_float(noiseCoord).mul(0.5).add(0.5);
+    mat.colorNode = grid.color.mul(grid.baseOpacity.add(wave.mul(grid.waveAmp)));
+    mat.opacityNode = dotShape;
+    grid.mesh = new THREE.Mesh(new THREE.PlaneGeometry(50, 32), mat);
+    grid.mesh.position.z = -5;
+    grid.mesh.renderOrder = -1;
+    scene.add(grid.mesh);
+  }
+
+  const posGroup = new THREE.Group();
+  posGroup.position.set(P.modelX, P.modelY, P.modelZ);
+  const rotGroup = new THREE.Group();
+  posGroup.add(rotGroup);
+  scene.add(posGroup);
+
+  // ---------------------------------------------------------------- uniforms shared by the particle material + compute
+
+  const u = {
+    color: uniform(new THREE.Color(P.color)), floatAmp: uniform(P.floatAmp), sphereSize: uniform(P.sphereSize),
+    ambient: uniform(P.ambient), wrap: uniform(P.wrap),
+    light1Pos: uniform(new THREE.Vector3(P.light1X, P.light1Y, P.light1Z)), light1Color: uniform(new THREE.Color(P.light1Color)), light1Intensity: uniform(P.light1Intensity),
+    light2Pos: uniform(new THREE.Vector3(P.light2X, P.light2Y, P.light2Z)), light2Color: uniform(new THREE.Color(P.light2Color)), light2Intensity: uniform(P.light2Intensity),
+    volumeStrength: uniform(P.volumeStrength),
+    noiseAmp: uniform(P.noiseAmp), noiseScale: uniform(P.noiseScale), noiseSpeed: uniform(P.noiseSpeed), noiseGain: uniform(P.noiseGain),
+    maskScale: uniform(P.maskScale), maskSpeed: uniform(P.maskSpeed), maskContrast: uniform(P.transitionMaskContrast),
+    physDt: uniform(0), pusherPos: uniform(new THREE.Vector3()), pusherVel: uniform(new THREE.Vector3()), pusherAxis: uniform(new THREE.Vector3(0, 0, 1)), pusherActive: uniform(0),
+    pusherRadius: uniform(P.pusherRadius), pusherInfluence: uniform(P.pusherInfluence), pusherFalloff: uniform(P.pusherFalloff), pusherDepth: uniform(P.pusherDepth),
+    pusherRadial: uniform(P.pusherRadialStrength), pusherMove: uniform(P.pusherMoveStrength), pusherFlowBias: uniform(P.pusherFlowBias),
+    pusherSpring: uniform(P.pusherSpring), pusherDamping: uniform(P.pusherDamping), pusherMaxOffset: uniform(P.pusherMaxOffset),
+    cylCollision: uniform(P.cylCollision ? 1 : 0), cylRadius: uniform(P.cylRadius), cylBounce: uniform(P.cylBounce), cylHoldTime: uniform(P.cylHoldTime),
+    pusherTurbulence: uniform(P.pusherTurbulence), pusherTurbScale: uniform(P.pusherTurbScale), pusherTurbSpeed: uniform(P.pusherTurbSpeed),
+    mouseGlowColor: uniform(new THREE.Color(P.mouseGlowColor)), mouseGlowActive: uniform(P.mouseGlowActive), mouseGlowPow: uniform(P.mouseGlowPow), glowSensitivity: uniform(P.glowSensitivity),
+    transitionProgress: uniform(0), transitionGlowScale: uniform(P.transitionGlowScale), entranceGlow: uniform(1),
+  };
+
+  // ---------------------------------------------------------------- particles (rebuilt when the count changes)
+
+  let particles = null;
+
+  function createParticles(count, positions, normals) {
+    const geo = new THREE.IcosahedronGeometry(1, 0);
+    const posAttr = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);       // zeros: the entrance flows from the origin
+    const normAttr = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+    const posTgt = new THREE.InstancedBufferAttribute(positions.slice(), 3);
+    const normTgt = new THREE.InstancedBufferAttribute(normals.slice(), 3);
+    geo.setAttribute('instancePos', posAttr);
+    geo.setAttribute('instanceNormal', normAttr);
+    geo.setAttribute('instancePosTarget', posTgt);
+    geo.setAttribute('instanceNormalTarget', normTgt);
+
+    // per-particle physics state: rest position, displacement, velocity, wall-cling timer, random direction
+    const restBuf = new THREE.StorageInstancedBufferAttribute(positions.slice(), 3);
+    const offBuf = new THREE.StorageInstancedBufferAttribute(count, 3);
+    const velBuf = new THREE.StorageInstancedBufferAttribute(count, 3);
+    const holdBuf = new THREE.StorageInstancedBufferAttribute(count, 1);
+    const randArr = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const v = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+      v.toArray(randArr, i * 3);
+    }
+    const randBuf = new THREE.StorageInstancedBufferAttribute(randArr, 3);
+
+    const restS = storage(restBuf, 'vec3', count);
+    const offS = storage(offBuf, 'vec3', count);
+    const velS = storage(velBuf, 'vec3', count);
+    const holdS = storage(holdBuf, 'float', count);
+    const randS = storage(randBuf, 'vec3', count);
+    const physOff = offS.toAttribute();
+
+    // GPU physics: a collider cylinder along the view axis follows the cursor
+    // and shoves particles out of its way, leaning in the direction of travel
+    // (a bow wave), frayed by turbulence; a spring-damper brings them home and
+    // the container wall stops them.
+    const computePhysics = Fn(() => {
+      const off = offS.element(instanceIndex);
+      const vel = velS.element(instanceIndex);
+      const hold = holdS.element(instanceIndex);
+      const rest = restS.toReadOnly().element(instanceIndex);
+      const rnd = randS.toReadOnly().element(instanceIndex);
+
+      const eps = float(1e-5);
+      const held = step(float(1e-4), hold);
+      const pos = rest.add(off);
+      const speed = u.pusherVel.length();
+      const moveDir = u.pusherVel.div(speed.add(eps));
+
+      const toParticle = pos.sub(u.pusherPos);
+      const axial = dot(toParticle, u.pusherAxis);
+      const perp = toParticle.sub(u.pusherAxis.mul(axial));
+      const dPerp = perp.length();
+      const dirOut = perp.div(dPerp.add(eps));
+
+      const reach = u.pusherRadius.add(u.pusherInfluence);
+      const perpFall = float(1).sub(smoothstep(u.pusherRadius, reach, dPerp));
+      const halfDepth = u.pusherDepth.mul(0.5);
+      const axialInfl = float(1).sub(smoothstep(halfDepth.mul(0.7), halfDepth, abs(axial)));
+      const influence = pow(perpFall, u.pusherFalloff).mul(axialInfl);
+
+      const exitDir = normalize(dirOut.add(moveDir.mul(u.pusherFlowBias)).add(rnd.mul(0.3)));
+      const mag = influence.mul(u.pusherRadial).add(influence.mul(speed).mul(u.pusherMove));
+      const pushForce = exitDir.mul(mag);
+
+      const nCoord = pos.mul(u.pusherTurbScale).add(vec3(time.mul(u.pusherTurbSpeed), time.mul(u.pusherTurbSpeed).mul(0.7), time.mul(u.pusherTurbSpeed).mul(1.3)));
+      const turbAmp = u.pusherTurbulence.mul(influence).mul(clamp(speed.mul(0.3).add(0.1), float(0), float(1)));
+      const turbForce = mx_fractal_noise_vec3(nCoord, 2, 2.0, 0.5).mul(turbAmp);
+
+      const pushAccel = pushForce.add(turbForce).mul(u.pusherActive);
+      const accel = pushAccel.sub(off.mul(u.pusherSpring).mul(float(1).sub(held))).sub(vel.mul(u.pusherDamping));
+
+      vel.addAssign(accel.mul(u.physDt));
+      off.addAssign(vel.mul(u.physDt));
+
+      const offLen = off.length();
+      off.mulAssign(min(float(1), u.pusherMaxOffset.div(offLen.add(eps))));
+
+      // keep inside the cylinder wall
+      const cpos = rest.add(off);
+      const rXZ = vec2(cpos.x, cpos.z).length();
+      const clampF = mix(float(1), min(float(1), u.cylRadius.div(rXZ.add(eps))), u.cylCollision);
+      off.assign(vec3(cpos.x.mul(clampF).sub(rest.x), cpos.y.sub(rest.y), cpos.z.mul(clampF).sub(rest.z)));
+
+      const outAmt = max(rXZ.sub(u.cylRadius), float(0));
+      const isOut = outAmt.div(outAmt.add(eps)).mul(u.cylCollision);
+      const nrm = vec2(cpos.x, cpos.z).div(rXZ.add(eps));
+      const vRad = vel.x.mul(nrm.x).add(vel.z.mul(nrm.y));
+      const vRemove = max(vRad, float(0)).mul(isOut).mul(float(1).add(u.cylBounce));
+      vel.assign(vec3(vel.x.sub(nrm.x.mul(vRemove)), vel.y, vel.z.sub(nrm.y.mul(vRemove))));
+
+      const atWall = step(u.cylRadius.add(0.01), rXZ).mul(u.cylCollision);
+      const decremented = max(hold.sub(u.physDt), float(0));
+      hold.assign(mix(decremented, u.cylHoldTime, atWall));
+    })().compute(count);
+
+    // material: wrapped diffuse from two lights, blended between the figure's
+    // surface normal and each little sphere's own normal, plus glow when pushed
+    const material = new THREE.MeshBasicNodeMaterial();
+    const instNorm = attribute('instanceNormal', 'vec3');
+    const instPos = attribute('instancePos', 'vec3');
+    const instNormTgt = attribute('instanceNormalTarget', 'vec3');
+    const instPosTgt = attribute('instancePosTarget', 'vec3');
+
+    const blendPos = mix(instPos, instPosTgt, u.transitionProgress);
+    const blendNorm = normalize(mix(instNorm, instNormTgt, u.transitionProgress));
+    const phase = fract(sin(dot(instPosTgt, vec3(12.9898, 78.233, 37.719))).mul(43758.5453)).mul(Math.PI * 2);
+
+    const floatDisp = vec3(
+      cos(time.mul(1.3).add(phase)).mul(u.floatAmp).mul(0.6),
+      sin(time.mul(1.6).add(phase)).mul(u.floatAmp),
+      sin(time.mul(1.1).add(phase.add(1.0))).mul(u.floatAmp).mul(0.6),
+    );
+    const maskCoord = blendPos.mul(u.maskScale).add(vec3(time.mul(u.maskSpeed), time.mul(u.maskSpeed).mul(0.7), time.mul(u.maskSpeed).mul(1.3)));
+    const mask = pow(clamp(mx_noise_float(maskCoord).mul(0.5).add(0.5), float(0), float(1)), u.maskContrast);
+    const noiseCoord = blendPos.mul(u.noiseScale).add(vec3(time.mul(u.noiseSpeed), float(0), time.mul(u.noiseSpeed).mul(0.7)));
+    const noiseDisp = mx_fractal_noise_vec3(noiseCoord, 2, 2.0, u.noiseGain).mul(u.noiseAmp).mul(mask);
+
+    const instCenter = blendPos.add(floatDisp).add(noiseDisp).add(physOff);
+    const rCenter = vec2(instCenter.x, instCenter.z).length();
+    const centerClampF = mix(float(1), min(float(1), u.cylRadius.div(rCenter.add(1e-5))), u.cylCollision);
+    const containedCenter = vec3(instCenter.x.mul(centerClampF), instCenter.y, instCenter.z.mul(centerClampF));
+    material.positionNode = positionLocal.mul(u.sphereSize).add(containedCenter);
+
+    const lightContrib = (lightPos, lightCol, lightInt) => {
+      const dir = normalize(lightPos.sub(blendPos));
+      const figW = clamp(dot(blendNorm, dir).add(u.wrap).div(float(1).add(u.wrap)), float(0), float(1));
+      const sphW = clamp(dot(normalize(normalLocal), dir).add(u.wrap).div(float(1).add(u.wrap)), float(0), float(1));
+      return lightCol.mul(mix(figW, figW.mul(sphW), u.volumeStrength)).mul(lightInt);
+    };
+    const lit = lightContrib(u.light1Pos, u.light1Color, u.light1Intensity).add(lightContrib(u.light2Pos, u.light2Color, u.light2Intensity));
+    const shaded = u.color.mul(clamp(lit.add(u.ambient), float(0), float(1)));
+
+    const physGlow = pow(clamp(physOff.length().mul(u.glowSensitivity), float(0), float(1)), u.mouseGlowPow).mul(u.mouseGlowActive);
+    const morphActivity = u.transitionProgress.mul(float(1).sub(u.transitionProgress)).mul(4);
+    const transGlow = clamp(instPosTgt.sub(instPos).length().mul(0.35), float(0), float(1)).mul(morphActivity).mul(u.transitionGlowScale);
+    const glow = clamp(physGlow.add(transGlow), float(0), float(1)).mul(u.entranceGlow);
+    material.colorNode = mix(shaded, u.mouseGlowColor, glow);
+
+    const mesh = new THREE.InstancedMesh(geo, material, count);
+    mesh.frustumCulled = false;
+    rotGroup.add(mesh);
+
+    return {
+      count, mesh, geo, material, computePhysics, posAttr, normAttr, posTgt, normTgt, restBuf, offBuf, velBuf, holdBuf,
+      dispose() {
+        rotGroup.remove(mesh);
+        geo.dispose(); material.dispose();
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------- debug collider
+
+  const pusherMesh = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 24, 1, true), new THREE.MeshBasicNodeMaterial());
+  pusherMesh.material.wireframe = true; pusherMesh.material.transparent = true; pusherMesh.material.depthWrite = false;
+  pusherMesh.material.colorNode = uniform(new THREE.Color('#00ffaa'));
+  pusherMesh.material.opacityNode = float(0.4);
+  pusherMesh.renderOrder = 10;
+  pusherMesh.visible = false;
+  rotGroup.add(pusherMesh);
+
+  // ---------------------------------------------------------------- cylinder
+
+  const cyl = {
+    color: uniform(new THREE.Color(P.cylColor)), noiseScale: uniform(P.cylNoiseScale), lineWidth: uniform(P.cylLineWidth), fresnelPow: uniform(P.cylFresnelPow),
+    baseOpacity: uniform(P.cylBaseOpacity), lineOpacity: uniform(P.cylLineOpacity), noiseSpeed: uniform(P.cylNoiseSpeed), pulseSpeed: uniform(P.cylPulseSpeed),
+    pulseAmp: uniform(P.cylPulseAmp), pulseEasing: uniform(P.cylPulseEasing), waveFreq: uniform(P.cylWaveFreq), texRepeat: uniform(P.cylTexRepeat),
+  };
+  {
+    const triTex = makePlexusTexture();
+    const mat = new THREE.MeshBasicNodeMaterial();
+    mat.transparent = true; mat.side = THREE.DoubleSide; mat.depthWrite = false;
+    const fresnelRim = pow(clamp(float(1).sub(abs(normalView.z)), float(0), float(1)), cyl.fresnelPow);
+    const off1 = vec3(time.mul(cyl.noiseSpeed), float(0), time.mul(cyl.noiseSpeed).mul(0.7));
+    const off2 = vec3(float(0), time.mul(cyl.noiseSpeed).mul(0.5), time.mul(cyl.noiseSpeed).mul(1.3));
+    const p1 = positionLocal.mul(cyl.noiseScale).add(off1);
+    const p2 = positionLocal.mul(cyl.noiseScale.mul(1.87)).add(vec3(17.3, 5.7, 23.1)).add(off2);
+    const line1 = float(1).sub(smoothstep(float(0), cyl.lineWidth, abs(mx_noise_float(p1))));
+    const line2 = float(1).sub(smoothstep(float(0), cyl.lineWidth, abs(mx_noise_float(p2))));
+    const linePat = clamp(line1.add(line2), float(0), float(1));
+    const pulse = pow(sin(time.mul(cyl.pulseSpeed).sub(positionLocal.y.mul(cyl.waveFreq))).mul(0.5).add(0.5), cyl.pulseEasing);
+    const pulsedLineOp = cyl.lineOpacity.mul(float(1).sub(cyl.pulseAmp).add(cyl.pulseAmp.mul(pulse)));
+    const texBright = tslTexture(triTex, uv().mul(cyl.texRepeat)).r;
+    const detailOp = texBright.mul(linePat).mul(fresnelRim).mul(pulsedLineOp);
+    mat.colorNode = cyl.color;
+    mat.opacityNode = clamp(fresnelRim.mul(cyl.baseOpacity).add(detailOp), float(0), float(1));
+    cyl.mesh = new THREE.Mesh(new THREE.CylinderGeometry(P.cylRadius, P.cylRadius, P.cylHeight, 64, 1, true), mat);
+    cyl.mesh.position.set(0, P.cylHeight / 2 + P.cylY, 0);
+    posGroup.add(cyl.mesh);
+  }
+  function rebuildCylinder() {
+    cyl.mesh.geometry.dispose();
+    cyl.mesh.geometry = new THREE.CylinderGeometry(P.cylRadius, P.cylRadius, P.cylHeight, 64, 1, true);
+    cyl.mesh.position.y = P.cylHeight / 2 + P.cylY;
+    ring.top.position.y = P.cylHeight + P.cylY;
+    ring.bot.position.y = P.cylY;
+  }
+
+  // ---------------------------------------------------------------- halo rings (two arcs top and bottom)
+
+  const ring = {
+    color: uniform(new THREE.Color(P.ringColor)), opacity: uniform(P.ringOpacity), brightness: uniform(P.ringBrightness),
+    meshes: [], wraps: [],
+  };
+  {
+    const mat = new THREE.MeshBasicNodeMaterial();
+    mat.transparent = true; mat.depthWrite = false; mat.side = THREE.DoubleSide;
+    mat.colorNode = ring.color.mul(ring.brightness);
+    mat.opacityNode = ring.opacity;
+    const makePair = () => {
+      const g = new THREE.Group();
+      for (const rotY of [0, Math.PI]) {
+        const m = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+        m.rotation.x = -Math.PI / 2;
+        const w = new THREE.Group();
+        w.rotation.y = rotY;
+        w.add(m);
+        g.add(w);
+        ring.meshes.push(m);
+        ring.wraps.push({ w, base: rotY });
+      }
+      return g;
+    };
+    ring.top = makePair();
+    ring.bot = makePair();
+    ring.top.position.y = P.cylHeight + P.cylY;
+    ring.bot.position.y = P.cylY;
+    ring.group = new THREE.Group();
+    ring.group.add(ring.top, ring.bot);
+    posGroup.add(ring.group);
+  }
+  function rebuildRings() {
+    const gapRad = P.ringGap * Math.PI / 180;
+    for (const m of ring.meshes) {
+      m.geometry.dispose();
+      m.geometry = new THREE.TorusGeometry(P.ringRadius, P.ringThickness, 8, 80, Math.PI - gapRad);
+    }
+    for (const { w, base } of ring.wraps) w.rotation.y = base + gapRad / 2;
+  }
+  rebuildRings();
+
+  // ---------------------------------------------------------------- post-processing
+
+  const post = new THREE.PostProcessing(renderer);
+  const scenePass = pass(scene, camera);
+  const sceneColor = scenePass.getTextureNode('output');
+  const bloomPass = bloom(sceneColor, P.bloomStrength, P.bloomRadius, P.bloomThreshold);
+  const caStrength = uniform(P.chromaticStr);
+  post.outputNode = chromaticAberration(sceneColor.add(bloomPass), caStrength, new THREE.Vector2(0.5, 0.5));
+
+  // ---------------------------------------------------------------- parameter sync
+
+  function applyParams() {
+    u.color.value.set(P.color); u.floatAmp.value = P.floatAmp; u.sphereSize.value = P.sphereSize;
+    u.ambient.value = P.ambient; u.wrap.value = P.wrap; u.volumeStrength.value = P.volumeStrength;
+    u.light1Pos.value.set(P.light1X, P.light1Y, P.light1Z); u.light1Color.value.set(P.light1Color); u.light1Intensity.value = P.light1Intensity;
+    u.light2Pos.value.set(P.light2X, P.light2Y, P.light2Z); u.light2Color.value.set(P.light2Color); u.light2Intensity.value = P.light2Intensity;
+    u.noiseAmp.value = P.noiseAmp; u.noiseScale.value = P.noiseScale; u.noiseSpeed.value = P.noiseSpeed; u.noiseGain.value = P.noiseGain;
+    u.maskScale.value = P.maskScale; u.maskSpeed.value = P.maskSpeed;
+    if (transition.state === 'idle') u.maskContrast.value = P.maskContrast;
+    u.pusherRadius.value = P.pusherRadius; u.pusherInfluence.value = P.pusherInfluence; u.pusherFalloff.value = P.pusherFalloff; u.pusherDepth.value = P.pusherDepth;
+    u.pusherRadial.value = P.pusherRadialStrength; u.pusherMove.value = P.pusherMoveStrength; u.pusherFlowBias.value = P.pusherFlowBias;
+    u.pusherSpring.value = P.pusherSpring; u.pusherDamping.value = P.pusherDamping; u.pusherMaxOffset.value = P.pusherMaxOffset;
+    u.pusherTurbulence.value = P.pusherTurbulence; u.pusherTurbScale.value = P.pusherTurbScale; u.pusherTurbSpeed.value = P.pusherTurbSpeed;
+    u.cylCollision.value = P.cylCollision ? 1 : 0; u.cylRadius.value = P.cylRadius; u.cylBounce.value = P.cylBounce; u.cylHoldTime.value = P.cylHoldTime;
+    u.mouseGlowColor.value.set(P.mouseGlowColor); u.mouseGlowActive.value = P.mouseGlowActive; u.mouseGlowPow.value = P.mouseGlowPow; u.glowSensitivity.value = P.glowSensitivity;
+    u.transitionGlowScale.value = P.transitionGlowScale;
+    posGroup.position.set(P.modelX, P.modelY, P.modelZ);
+
+    bloomPass.strength.value = P.bloomStrength; bloomPass.radius.value = P.bloomRadius; bloomPass.threshold.value = P.bloomThreshold;
+    caStrength.value = P.chromaticStr;
+
+    cyl.mesh.visible = P.cylVisible;
+    cyl.color.value.set(P.cylColor); cyl.noiseScale.value = P.cylNoiseScale; cyl.lineWidth.value = P.cylLineWidth; cyl.fresnelPow.value = P.cylFresnelPow;
+    cyl.baseOpacity.value = P.cylBaseOpacity; cyl.lineOpacity.value = P.cylLineOpacity; cyl.noiseSpeed.value = P.cylNoiseSpeed; cyl.pulseSpeed.value = P.cylPulseSpeed;
+    cyl.pulseAmp.value = P.cylPulseAmp; cyl.pulseEasing.value = P.cylPulseEasing; cyl.waveFreq.value = P.cylWaveFreq; cyl.texRepeat.value = P.cylTexRepeat;
+
+    grid.mesh.visible = P.gridVisible;
+    grid.color.value.set(P.gridColor); grid.baseOpacity.value = P.gridBaseOpacity; grid.waveAmp.value = P.gridWaveAmp; grid.noiseScale.value = P.gridNoiseScale;
+    grid.waveSpeed.value = P.gridWaveSpeed; grid.density.value = P.gridDensity; grid.dotSize.value = P.gridDotSize;
+
+    ring.group.visible = P.ringVisible;
+    ring.color.value.set(P.ringColor); ring.opacity.value = P.ringOpacity; ring.brightness.value = P.ringBrightness;
+
+    redrawBg();
+  }
+
+  // ---------------------------------------------------------------- transitions (entrance and model morph)
+
+  const transition = { state: 'idle', t: 0, entrance: true };
+
+  function startEntrance() {
+    if (!particles) return;
+    particles.posAttr.array.fill(0); particles.normAttr.array.fill(0);
+    particles.posAttr.needsUpdate = particles.normAttr.needsUpdate = true;
+    particles.offBuf.array.fill(0); particles.velBuf.array.fill(0); particles.holdBuf.array.fill(0);
+    particles.offBuf.needsUpdate = particles.velBuf.needsUpdate = particles.holdBuf.needsUpdate = true;
+    u.transitionProgress.value = 0;
+    u.maskContrast.value = P.transitionMaskContrast;
+    u.entranceGlow.value = 1;
+    transition.entrance = true;
+    transition.state = 'morphing';
+    transition.t = 0;
+  }
+
+  function morphTo(positions, normals) {
+    const p = particles;
+    const prog = u.transitionProgress.value;
+    if (prog > 0) {           // interrupted mid-morph: bake the blend as the new start
+      const s = p.posAttr.array, t = p.posTgt.array, sn = p.normAttr.array, tn = p.normTgt.array;
+      for (let i = 0; i < s.length; i++) { s[i] = s[i] * (1 - prog) + t[i] * prog; sn[i] = sn[i] * (1 - prog) + tn[i] * prog; }
+      p.posAttr.needsUpdate = p.normAttr.needsUpdate = true;
+      u.transitionProgress.value = 0;
+    }
+    p.posTgt.array.set(positions); p.normTgt.array.set(normals);
+    p.posTgt.needsUpdate = p.normTgt.needsUpdate = true;
+    p.restBuf.array.set(positions); p.restBuf.needsUpdate = true;
+    transition.t = 0;
+    if (transition.state === 'idle') {
+      transition.state = 'deform-out';
+    } else {
+      u.maskContrast.value = P.transitionMaskContrast;
+      transition.state = 'morphing';
+    }
+  }
+
+  function stepTransition(delta) {
+    const tr = transition;
+    if (tr.state === 'deform-out') {
+      tr.t += delta;
+      const p = Math.min(tr.t / P.transitionDeformDur, 1);
+      u.maskContrast.value = P.maskContrast + (P.transitionMaskContrast - P.maskContrast) * smoothstepJS(p);
+      if (p >= 1) { u.maskContrast.value = P.transitionMaskContrast; tr.t = 0; tr.state = 'morphing'; }
+    } else if (tr.state === 'morphing') {
+      tr.t += delta;
+      const p = Math.min(tr.t / (tr.entrance ? P.entranceMorphDur : P.transitionMorphDur), 1);
+      u.transitionProgress.value = smoothstepJS(p);
+      if (p >= 1) {
+        particles.posAttr.array.set(particles.posTgt.array);
+        particles.normAttr.array.set(particles.normTgt.array);
+        particles.posAttr.needsUpdate = particles.normAttr.needsUpdate = true;
+        u.transitionProgress.value = 0;
+        tr.t = 0; tr.state = 'deform-in';
+      }
+    } else if (tr.state === 'deform-in') {
+      tr.t += delta;
+      const p = Math.min(tr.t / (tr.entrance ? P.entranceReformDur : P.transitionReformDur), 1);
+      u.maskContrast.value = P.transitionMaskContrast + (P.maskContrast - P.transitionMaskContrast) * smoothstepJS(p);
+      if (tr.entrance) u.entranceGlow.value = 1 - smoothstepJS(p);
+      if (p >= 1) {
+        u.maskContrast.value = P.maskContrast;
+        tr.state = 'idle';
+        tr.entrance = false;
+      }
+    }
+    if (!tr.entrance && input.everMoved && u.entranceGlow.value < 1) u.entranceGlow.value = Math.min(u.entranceGlow.value + delta, 1);
+  }
+
+  // ---------------------------------------------------------------- model selection
+
+  let models = MODELS.slice();
+  let activeModel = 0;
+  const track = document.getElementById('track');
+
+  function renderSelector() {
+    track.innerHTML = '';
+    models.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.className = 'item' + (i === activeModel ? ' active' : '');
+      b.style.setProperty('--offset', i - activeModel);
+      b.innerHTML = '<span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span><span class="label"></span>';
+      b.querySelector('.label').textContent = m.label;
+      b.addEventListener('click', () => selectModel(i));
+      track.appendChild(b);
+    });
+  }
+
+  async function selectModel(i) {
+    activeModel = (i + models.length) % models.length;
+    renderSelector();
+    const model = models[activeModel];
+    const { positions, normals } = await sampleGeometry(model, P.particleCount);
+    if (models[activeModel] !== model) return;
+    morphTo(positions, normals);
+  }
+  document.getElementById('prev').addEventListener('click', () => selectModel(activeModel - 1));
+  document.getElementById('next').addEventListener('click', () => selectModel(activeModel + 1));
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') selectModel(activeModel - 1);
+    if (e.key === 'ArrowRight') selectModel(activeModel + 1);
+  });
+
+  // drop a .glb anywhere to use it
+  const dropOverlay = document.getElementById('drop');
+  window.addEventListener('dragover', (e) => { e.preventDefault(); dropOverlay.classList.add('show'); });
+  window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) dropOverlay.classList.remove('show'); });
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropOverlay.classList.remove('show');
+    const file = e.dataTransfer.files[0];
+    if (!file || !/\.(glb|gltf)$/i.test(file.name)) return;
+    const buffer = await file.arrayBuffer();
+    const gltf = await new GLTFLoader().parseAsync(buffer, '');
+    const id = 'glb:' + file.name + ':' + Date.now();
+    models = MODELS.concat([{ id, label: file.name.replace(/\.(glb|gltf)$/i, '').slice(0, 14), build: () => gltf.scene }]);
+    selectModel(models.length - 1);
+  });
+
+  // ---------------------------------------------------------------- build / rebuild the particle system
+
+  async function build(count) {
+    const model = models[activeModel];
+    const { positions, normals } = await sampleGeometry(model, count);
+    if (particles) particles.dispose();
+    particles = createParticles(count, positions, normals);
+    startEntrance();
+  }
+
+  // ---------------------------------------------------------------- input: cursor → collider, camera parallax
+
+  const input = { ndc: new THREE.Vector2(), everMoved: false, over: false, moving: false, moveTimer: 0 };
+  const raycaster = new THREE.Raycaster();
+  const mousePlane = new THREE.Plane();
+  const mouseHit = new THREE.Vector3();
+  const modelCenter = new THREE.Vector3();
+  const cameraDir = new THREE.Vector3();
+  const targetMousePos = new THREE.Vector3();
+  const pusherPos = new THREE.Vector3(), pusherPrev = new THREE.Vector3(), pusherVel = new THREE.Vector3();
+  const invRotQ = new THREE.Quaternion();
+  const localAxis = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0);
+  let pusherInit = false;
+  const cam = { x: 0, y: 0, roll: 0, vx: 0, vy: 0, vroll: 0, radius: camera.position.z };
+
+  function onPointerMove(e) {
+    const rect = container.getBoundingClientRect();
+    input.ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    input.everMoved = true;
+    input.moving = true;
+    input.over = true;
+    input.moveTimer = 0;
+  }
+  function onPointerLeave() { input.moving = false; input.over = false; pusherInit = false; }
+  container.addEventListener('pointermove', onPointerMove);
+  container.addEventListener('pointerdown', onPointerMove);
+  container.addEventListener('pointerleave', onPointerLeave);
+  container.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') onPointerLeave(); });
+  container.addEventListener('pointercancel', onPointerLeave);
+
+  // ---------------------------------------------------------------- loop
+
+  let lastTime = performance.now();
+  function animate() {
+    const now = performance.now();
+    const delta = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    input.moveTimer += delta;
+    if (input.moveTimer > 0.06) input.moving = false;
+
+    if (particles) stepTransition(delta);
+
+    const rotDelta = (2 * Math.PI / 60) * P.autoRotateSpeed * delta;
+    rotGroup.rotation.y += rotDelta;
+    ring.group.rotation.y += rotDelta;
+
+    posGroup.getWorldPosition(modelCenter);
+    camera.getWorldDirection(cameraDir);
+    mousePlane.setFromNormalAndCoplanarPoint(cameraDir, modelCenter);
+    invRotQ.copy(rotGroup.quaternion).invert();
+    localAxis.copy(cameraDir).applyQuaternion(invRotQ).normalize();
+    u.pusherAxis.value.copy(localAxis);
+
+    // project the cursor onto the model plane every frame, into model-local space
+    if (input.everMoved) {
+      raycaster.setFromCamera(input.ndc, camera);
+      if (raycaster.ray.intersectPlane(mousePlane, mouseHit)) {
+        mouseHit.sub(posGroup.position).applyQuaternion(invRotQ);
+        targetMousePos.copy(mouseHit);
+      }
+    }
+
+    u.physDt.value = delta;
+    if (input.everMoved) {
+      if (!pusherInit) { pusherPos.copy(targetMousePos); pusherPrev.copy(targetMousePos); pusherInit = true; }
+      pusherPos.lerp(targetMousePos, 1 - Math.exp(-P.pusherFollow * delta));
+      pusherVel.subVectors(pusherPos, pusherPrev).divideScalar(Math.max(delta, 0.001)).clampLength(0, 40);
+      pusherPrev.copy(pusherPos);
+      u.pusherPos.value.copy(pusherPos);
+      u.pusherVel.value.copy(pusherVel);
+    }
+    u.pusherActive.value = input.everMoved && input.over ? 1 : 0;
+
+    const r = P.pusherRadius + P.pusherInfluence;
+    pusherMesh.position.copy(pusherPos);
+    pusherMesh.scale.set(r, P.pusherDepth, r);
+    pusherMesh.quaternion.setFromUnitVectors(UP, localAxis);
+    pusherMesh.visible = P.pusherVisible && input.everMoved && input.over;
+
+    // camera spring toward the cursor
+    {
+      const nx = input.everMoved ? input.ndc.x : 0, ny = input.everMoved ? input.ndc.y : 0;
+      const k = P.camStiffness, c = P.camDamping, I = P.camIntensity;
+      cam.vx += ((nx * I * 0.05 - cam.x) * k - cam.vx * c) * delta;
+      cam.vy += ((ny * I * 0.05 - cam.y) * k - cam.vy * c) * delta;
+      cam.vroll += ((-nx * I * 0.008 - cam.roll) * k - cam.vroll * c) * delta;
+      cam.x += cam.vx * delta; cam.y += cam.vy * delta; cam.roll += cam.vroll * delta;
+      camera.position.set(cam.x, cam.y, cam.radius);
+      camera.rotation.set(0, 0, cam.roll);
+    }
+
+    if (particles) renderer.compute(particles.computePhysics);
+    post.render();
+  }
+
+  function onResize() {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  }
+  window.addEventListener('resize', onResize);
+
+  // ---------------------------------------------------------------- UI: preset toggle, panel
+
+  const presetBtn = document.getElementById('preset');
+  const iconMoon = document.getElementById('icon-moon'), iconSun = document.getElementById('icon-sun');
+  function applyPreset(name) {
+    preset = name;
+    Object.assign(P, PRESETS[name]);
+    iconMoon.hidden = name !== 'light';
+    iconSun.hidden = name === 'light';
+    applyParams();
+    rebuildRings();
+    pane.refresh();
+  }
+  presetBtn.addEventListener('click', () => applyPreset(preset === 'light' ? 'dark' : 'light'));
+
+  const paneEl = document.getElementById('pane');
+  const pane = new Pane({ container: paneEl, title: 'CONTROLS' });
+  const toggleBtn = document.getElementById('toggle-pane');
+  toggleBtn.addEventListener('click', () => {
+    paneEl.hidden = !paneEl.hidden;
+    toggleBtn.classList.toggle('on', !paneEl.hidden);
+    toggleBtn.classList.toggle('off', paneEl.hidden);
+  });
+
+  {
+    const f = (parent, title, expanded = false) => parent.addFolder({ title, expanded });
+    const b = (parent, key, label, opts = {}) => parent.addBinding(P, key, { label, ...opts });
+    const num = (parent, key, label, min, max, step = 0.01) => b(parent, key, label, { min, max, step });
+
+    const holo = f(pane, 'Hologram', true);
+    const geom = f(holo, 'Geometry', true);
+    num(geom, 'particleCount', 'Particles', 1000, 200000, 1000);
+    const mat = f(holo, 'Material', true);
+    b(mat, 'color', 'Color'); num(mat, 'ambient', 'Ambient', 0, 1); num(mat, 'wrap', 'Wrap', 0, 1);
+    num(mat, 'volumeStrength', 'Volume Strength', 0, 1); num(mat, 'sphereSize', 'Sphere Size', 0.002, 0.08, 0.001);
+    const pos = f(holo, 'Position', true);
+    num(pos, 'modelX', 'X', -5, 5, 0.05); num(pos, 'modelY', 'Y', -5, 5, 0.05); num(pos, 'modelZ', 'Z', -5, 5, 0.05);
+    const inter = f(holo, 'Interaction', true);
+    b(inter, 'mouseGlowColor', 'Glow Color'); num(inter, 'glowSensitivity', 'Glow Sensitivity', 0, 10, 0.1); num(inter, 'mouseGlowActive', 'Glow Intensity', 0, 10, 0.1);
+    num(inter, 'mouseGlowDecay', 'Glow Decay', 0, 5, 0.05); num(inter, 'mouseGlowPow', 'Glow Sharpness', 0.5, 10, 0.1); num(inter, 'mouseLerp', 'Follow Speed', 0.1, 20, 0.1);
+    const push = f(holo, 'Pusher Physics');
+    b(push, 'pusherVisible', 'Show Collider'); num(push, 'pusherRadius', 'Collider Size', 0.01, 2); num(push, 'pusherInfluence', 'Influence Radius', 0, 3);
+    num(push, 'pusherFalloff', 'Influence Falloff', 0.1, 6, 0.1); num(push, 'pusherDepth', 'Collider Depth (Z)', 0.1, 12, 0.1); num(push, 'pusherFollow', 'Follow Speed', 1, 40, 0.5);
+    num(push, 'pusherRadialStrength', 'Push Out Force', 0, 200, 1); num(push, 'pusherMoveStrength', 'Wave Force', 0, 300, 1); num(push, 'pusherFlowBias', 'Forward Lean', 0, 5, 0.1);
+    num(push, 'pusherSpring', 'Return Speed', 0, 80, 0.5); num(push, 'pusherDamping', 'Return Smoothness', 0, 60, 0.1); num(push, 'pusherMaxOffset', 'Max Displacement', 0.1, 20, 0.1);
+    num(push, 'pusherTurbulence', 'Turbulence', 0, 200, 1); num(push, 'pusherTurbScale', 'Turbulence Scale', 0.1, 6, 0.1); num(push, 'pusherTurbSpeed', 'Turbulence Speed', 0, 5, 0.05);
+    const fx = f(holo, 'PostFX');
+    num(fx, 'bloomStrength', 'Bloom Strength', 0, 3); num(fx, 'bloomRadius', 'Bloom Radius', 0, 1); num(fx, 'bloomThreshold', 'Bloom Threshold', 0, 1); num(fx, 'chromaticStr', 'Chromatic Aberration', 0, 1, 0.005);
+    const l1 = f(holo, 'Light 1');
+    num(l1, 'light1X', 'X', -10, 10, 0.1); num(l1, 'light1Y', 'Y', -10, 10, 0.1); num(l1, 'light1Z', 'Z', -10, 10, 0.1); b(l1, 'light1Color', 'Color'); num(l1, 'light1Intensity', 'Intensity', 0, 5);
+    const l2 = f(holo, 'Light 2');
+    num(l2, 'light2X', 'X', -10, 10, 0.1); num(l2, 'light2Y', 'Y', -10, 10, 0.1); num(l2, 'light2Z', 'Z', -10, 10, 0.1); b(l2, 'light2Color', 'Color'); num(l2, 'light2Intensity', 'Intensity', 0, 5);
+    const anim = f(holo, 'Animation');
+    num(anim, 'floatAmp', 'Float Amp', 0, 0.2, 0.001); num(anim, 'autoRotateSpeed', 'Rotate Speed', -10, 10, 0.01);
+    const wave = f(anim, 'Wave', true);
+    num(wave, 'noiseAmp', 'Wave Amp', 0, 2); num(wave, 'noiseScale', 'Wave Scale', 0.1, 10, 0.1); num(wave, 'noiseSpeed', 'Wave Speed', 0, 5); num(wave, 'noiseGain', 'Turbulence', 0.1, 0.9);
+    num(wave, 'maskScale', 'Instability Scale', 0.1, 5); num(wave, 'maskSpeed', 'Instability Speed', 0, 3); num(wave, 'maskContrast', 'Instability Edge', 0.1, 10, 0.1);
+    const trans = f(holo, 'Transition');
+    num(trans, 'transitionDeformDur', 'Deform Duration', 0, 3, 0.05); num(trans, 'transitionMorphDur', 'Morph Duration', 0.1, 5, 0.05); num(trans, 'transitionReformDur', 'Reform Duration', 0, 3, 0.05);
+    num(trans, 'transitionMaskContrast', 'Deform Amount', 0.1, 5, 0.05); num(trans, 'transitionGlowScale', 'Glow Scale', 0, 3, 0.05);
+    const ent = f(holo, 'Entrance');
+    num(ent, 'entranceMorphDur', 'Morph Duration', 0.1, 5, 0.05); num(ent, 'entranceReformDur', 'Reform Duration', 0, 3, 0.05);
+    ent.addButton({ title: 'replay' }).on('click', startEntrance);
+
+    const c = f(pane, 'Cylinder');
+    b(c, 'cylVisible', 'Visible'); b(c, 'cylCollision', 'Collision'); num(c, 'cylBounce', 'Bounce', 0, 1); num(c, 'cylHoldTime', 'Wall Hold (s)', 0, 2); b(c, 'cylColor', 'Color');
+    num(c, 'cylRadius', 'Radius', 0.5, 4, 0.05); num(c, 'cylHeight', 'Height', 1, 10, 0.1); num(c, 'cylNoiseScale', 'Noise Scale', 0.05, 5, 0.05); num(c, 'cylLineWidth', 'Line Width', 0.01, 1);
+    num(c, 'cylFresnelPow', 'Fresnel Power', 0.1, 8, 0.1); num(c, 'cylBaseOpacity', 'Base Opacity', 0, 1); num(c, 'cylLineOpacity', 'Line Opacity', 0, 1); num(c, 'cylNoiseSpeed', 'Noise Speed', 0, 2);
+    num(c, 'cylPulseSpeed', 'Pulse Speed', 0, 10, 0.1); num(c, 'cylPulseAmp', 'Pulse Amount', 0, 1); num(c, 'cylPulseEasing', 'Pulse Easing', 0.5, 8, 0.1); num(c, 'cylWaveFreq', 'Wave Freq', 0, 10, 0.1);
+    num(c, 'cylTexRepeat', 'Tex Repeat', 1, 20, 0.5); num(c, 'cylY', 'Position Y', -3, 3, 0.05);
+
+    const g = f(pane, 'Dot Grid');
+    b(g, 'gridVisible', 'Visible'); b(g, 'gridColor', 'Color'); num(g, 'gridBaseOpacity', 'Base Opacity', 0, 1); num(g, 'gridWaveAmp', 'Wave Amp', 0, 2);
+    num(g, 'gridNoiseScale', 'Wave Scale', 0.05, 2); num(g, 'gridWaveSpeed', 'Wave Speed', 0, 2); num(g, 'gridDensity', 'Density', 0.2, 6, 0.05); num(g, 'gridDotSize', 'Dot Size', 0.005, 0.3, 0.005);
+
+    const rg = f(pane, 'Ring');
+    b(rg, 'ringVisible', 'Visible'); b(rg, 'ringColor', 'Color'); num(rg, 'ringThickness', 'Thickness', 0.005, 0.2, 0.005); num(rg, 'ringBrightness', 'Brightness', 0, 10, 0.1);
+    num(rg, 'ringOpacity', 'Opacity', 0, 1); num(rg, 'ringRadius', 'Radius', 0.5, 4, 0.05); num(rg, 'ringGap', 'Gap (deg)', 0, 180, 1);
+
+    const bg = f(pane, 'Background');
+    b(bg, 'bgColorCenter', 'Center'); b(bg, 'bgColorMid', 'Mid'); b(bg, 'bgColorEdge', 'Edge');
+
+    const cm = f(pane, 'Camera');
+    num(cm, 'camIntensity', 'Intensity', 0, 20, 0.1); num(cm, 'camStiffness', 'Stiffness', 0.1, 20, 0.1); num(cm, 'camDamping', 'Damping', 0.1, 20, 0.1);
+  }
+
+  let rebuildTimer = 0;
+  pane.on('change', (ev) => {
+    const key = ev.target.key;
+    if (key === 'particleCount') {
+      clearTimeout(rebuildTimer);
+      rebuildTimer = setTimeout(() => build(P.particleCount), 400);
+      return;
+    }
+    if (key === 'cylRadius' || key === 'cylHeight' || key === 'cylY') rebuildCylinder();
+    if (key === 'ringRadius' || key === 'ringThickness' || key === 'ringGap') rebuildRings();
+    applyParams();
+  });
+
+  // ---------------------------------------------------------------- go
+
+  applyParams();
+  renderSelector();
+  await build(P.particleCount);
+  renderer.setAnimationLoop(animate);
+  if (!isWebGPU) console.info('WebGPU not available; running on the WebGL2 fallback backend.');
+  </script>
+</body>
+</html>
