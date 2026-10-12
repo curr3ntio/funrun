@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Christmas Baubles</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; width: 100%; height: 100%; overflow: hidden;
+      background: linear-gradient(#e6eaf5 0%, #f6f6f6 80%);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      overscroll-behavior: none;
+    }
+    p { margin: 0; }
+    #container { position: fixed; inset: 0; z-index: 1; touch-action: none; cursor: pointer; }
+    #container canvas { display: block; }
+
+    /* Typographic underlay behind the canvas, after the original's layout. */
+    .layer { position: fixed; inset: 0; padding: 40px; pointer-events: none; color: #000; }
+    .under { z-index: 0; }
+    .over { z-index: 2; }
+    .row { display: flex; align-items: flex-start; }
+    .row > * { flex: 1 1 0; }
+    .right { text-align: right; }
+    .center { text-align: center; }
+    .brand { font: 700 30px/30px Antonio, sans-serif; letter-spacing: -2px; text-transform: uppercase; }
+    .label { font-size: 12px; line-height: 1.5em; }
+    .label b { font-weight: 600; }
+    .dash { width: 10px; height: 1px; background: #000; margin-top: 8px; }
+    .big {
+      position: absolute; left: 40px; right: 40px; bottom: 100px;
+      display: flex; justify-content: space-between; align-items: flex-end;
+      font: 600 250px/0.8 Antonio, sans-serif; letter-spacing: -7px;
+    }
+    .bottom { position: absolute; left: 40px; right: 40px; bottom: 40px; align-items: flex-end; }
+    .tag { font: 600 13px/1 Antonio, sans-serif; letter-spacing: -0.5px; text-transform: uppercase; }
+    .side {
+      position: absolute; right: 40px; top: 105px; display: flex; flex-direction: column;
+      align-items: center; gap: 18px;
+    }
+    .side span { writing-mode: vertical-rl; font-weight: 600; font-size: 11px; letter-spacing: 0.04em; }
+    .side i { width: 8px; height: 8px; border-radius: 50%; background: #000; }
+    .bottom a { pointer-events: auto; color: #000; text-decoration: none; font-size: 12px; margin-left: 14px; }
+    @media (max-width: 568px) {
+      .layer { padding: 16px; }
+      .big { left: 16px; right: 16px; bottom: 80px; font-size: 140px; letter-spacing: -4px; }
+      .bottom { left: 16px; right: 16px; bottom: 16px; }
+      .side { right: 16px; top: 80px; }
+      .full { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="layer under">
+    <div class="row">
+      <p class="brand">funrun</p>
+      <p></p>
+      <p></p>
+    </div>
+    <div style="height: 60px"></div>
+    <div class="row">
+      <div class="label">
+        <p><b>Best Served Bold</b></p>
+        <p>Christmas Baubles</p>
+        <div class="dash"></div>
+      </div>
+      <p></p>
+      <p></p>
+    </div>
+    <div class="big"><p>X</p><p>_24</p></div>
+    <div class="row bottom">
+      <div class="label full">
+        <p><b>Physics, Effects</b></p>
+        <p>Lights and Colors</p>
+      </div>
+      <p class="tag center full">Fifty of them, drifting</p>
+      <p class="right"></p>
+    </div>
+  </div>
+
+  <div id="container"></div>
+
+  <div class="layer over">
+    <div class="side"><span>DRAG POINTER</span><i></i></div>
+    <div class="row bottom">
+      <p></p><p></p>
+      <p class="right"><a href="../">funrun</a></p>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js",
+      "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.36.4/build/index.js",
+      "n8ao": "https://cdn.jsdelivr.net/npm/n8ao@1.9.4/dist/N8AO.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+  import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+  import * as CANNON from 'cannon-es';
+  import { EffectComposer, RenderPass, EffectPass, ToneMappingEffect, ToneMappingMode } from 'postprocessing';
+  import { N8AOPostPass } from 'n8ao';
+
+  // Rebuilt after Paul Henschel's "Best Served Bold" baubles (pmndrs, 2020).
+  // Fifty spheres in a zero-gravity world, each nudged toward the origin every
+  // frame (three times harder vertically, so the cluster comes out wide), with
+  // a kinematic ball under the cursor shoving them aside.
+  const COUNT = 50;
+  const SCALES = [0.75, 0.75, 1, 1, 1.25];
+  const PULL = new THREE.Vector3(-50, -150, -50);   // impulse per second, times scale
+  const POINTER_RADIUS = 2;
+  const FOV = 32.5, CAM_Z = 20;
+
+  const container = document.getElementById('container');
+
+  // ---------------------------------------------------------------- renderer
+
+  const renderer = new THREE.WebGLRenderer({
+    alpha: true, antialias: false, stencil: false, depth: false,
+    powerPreference: 'high-performance',
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setClearColor(0x000000, 0);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMappingExposure = 1.5;                // tone mapping itself happens in the composer
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 1, 100);
+  camera.position.set(0, 0, CAM_Z);
+
+  // No HDR file: a generated studio room stands in for the original's panorama.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = envMap;
+
+  // ---------------------------------------------------------------- lights
+
+  scene.add(new THREE.AmbientLight(0xffffff, Math.PI));
+
+  const spot = new THREE.SpotLight(0xffffff, Math.PI, 0, 0.2, 1, 0);
+  spot.position.set(20, 20, 25);
+  spot.castShadow = true;
+  spot.shadow.mapSize.set(512, 512);
+  spot.shadow.camera.near = 10;
+  spot.shadow.camera.far = 70;
+  spot.shadow.bias = -0.0005;
+  scene.add(spot, spot.target);
+
+  const key = new THREE.DirectionalLight(0xffffff, 4 * Math.PI);
+  key.position.set(0, 5, -4);
+  const under = new THREE.DirectionalLight(0xff0000, 4 * Math.PI);
+  under.position.set(0, -15, 0);
+  scene.add(key, under);
+
+  // ---------------------------------------------------------------- meshes
+
+  const baubleMaterial = new THREE.MeshLambertMaterial({ color: '#c0a0a0', emissive: 'red' });
+  const capMaterial = new THREE.MeshStandardMaterial({
+    metalness: 0.75, roughness: 0.15,
+    color: '#8a492f', emissive: '#600000', envMapIntensity: 20,
+  });
+  const sphereGeometry = new THREE.SphereGeometry(1, 28, 28);
+
+  // The cap, built from a lathe profile plus a hanging loop instead of a glb.
+  // Units are for a radius-1 bauble; it sits on the +Z pole.
+  function makeCapGeometry() {
+    const profile = [
+      [0.00, 0.86], [0.20, 0.88], [0.255, 0.93], [0.285, 0.96], [0.295, 0.99],
+      [0.275, 1.02], [0.265, 1.05], [0.265, 1.19], [0.285, 1.21], [0.295, 1.25],
+      [0.285, 1.28], [0.230, 1.31], [0.090, 1.33], [0.060, 1.345], [0.060, 1.37],
+      [0.000, 1.38],
+    ].map(([x, y]) => new THREE.Vector2(x, y));
+    const band = new THREE.LatheGeometry(profile, 40);
+
+    // Shallow vertical grooves around the band, like a crimped crown.
+    const p = band.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      if (y < 1.04 || y > 1.2) continue;
+      const a = Math.atan2(z, x);
+      const k = 1 - 0.06 * Math.max(0, Math.cos(a * 10)) ** 6;
+      p.setXYZ(i, x * k, y, z * k);
+    }
+    band.computeVertexNormals();
+
+    const loop = new THREE.TorusGeometry(0.1, 0.026, 10, 28);
+    loop.translate(0, 1.47, 0);
+    const geo = mergeGeometries([band.toNonIndexed(), loop.toNonIndexed()]);
+    geo.rotateX(Math.PI / 2);                        // lathe axis Y -> body axis Z
+    return geo;
+  }
+  const capGeometry = makeCapGeometry();
+
+  // ---------------------------------------------------------------- physics
+
+  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, 0, 0) });
+  world.broadphase = new CANNON.SAPBroadphase(world);
+  world.allowSleep = false;
+  world.solver.iterations = 8;
+  const mat = new CANNON.Material('bauble');
+  world.addContactMaterial(new CANNON.ContactMaterial(mat, mat, {
+    friction: 0.2, restitution: 0,
+    contactEquationStiffness: 1e7, contactEquationRelaxation: 3,
+  }));
+  world.defaultContactMaterial.friction = 0.2;
+  world.defaultContactMaterial.restitution = 0;
+
+  // rapier damps v by 1/(1 + dt*d); cannon by (1 - d)^dt. Match the per-second decay.
+  const damp = (d) => 1 - Math.exp(-d);
+
+  const capShapeRot = new CANNON.Quaternion().setFromEuler(Math.PI / 2, 0, 0);  // cylinder Y -> Z
+  const spread = THREE.MathUtils.randFloatSpread;
+
+  const baubles = [];
+  for (let i = 0; i < COUNT; i++) {
+    const s = SCALES[Math.floor(Math.random() * SCALES.length)];
+    const body = new CANNON.Body({
+      mass: (4 / 3) * Math.PI * s * s * s,           // density 1, as rapier would compute
+      material: mat,
+      linearDamping: damp(0.75),
+      angularDamping: damp(0.15),
+      position: new CANNON.Vec3(spread(20), spread(20) - 25, spread(20) - 10),
+    });
+    body.addShape(new CANNON.Sphere(s));
+    body.addShape(new CANNON.Cylinder(0.275 * s, 0.275 * s, 0.3 * s, 10),
+      new CANNON.Vec3(0, 0, 1.2 * s), capShapeRot);
+    body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+    world.addBody(body);
+
+    const group = new THREE.Group();
+    const ball = new THREE.Mesh(sphereGeometry, baubleMaterial);
+    ball.scale.setScalar(s);
+    ball.castShadow = ball.receiveShadow = true;
+    const cap = new THREE.Mesh(capGeometry, capMaterial);
+    cap.scale.setScalar(s);
+    cap.castShadow = true;
+    group.add(ball, cap);
+    scene.add(group);
+
+    baubles.push({ body, group, s });
+  }
+
+  // Kinematic ball that follows the cursor across the z = 0 plane.
+  const pointerBody = new CANNON.Body({ type: CANNON.Body.KINEMATIC, material: mat });
+  pointerBody.addShape(new CANNON.Sphere(POINTER_RADIUS));
+  world.addBody(pointerBody);
+
+  const mouse = new THREE.Vector2(0, 0);
+  const pointerTarget = new THREE.Vector3();
+  const pointerPos = new THREE.Vector3();
+  window.addEventListener('pointermove', (e) => {
+    mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  });
+
+  function viewportAtZ0() {
+    const h = 2 * CAM_Z * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    return { w: h * camera.aspect, h };
+  }
+
+  // ---------------------------------------------------------------- post
+
+  const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
+  composer.addPass(new RenderPass(scene, camera));
+  // Same order as the original: tone map first, then multiply the red AO on top,
+  // so the occlusion stays a deep pink instead of being pushed to orange by ACES.
+  composer.addPass(new EffectPass(camera, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC })));
+  const ao = new N8AOPostPass(scene, camera, innerWidth, innerHeight);
+  ao.configuration.aoRadius = 2;
+  ao.configuration.distanceFalloff = 2.5;
+  ao.configuration.intensity = 1;
+  ao.configuration.color = new THREE.Color('red');
+  composer.addPass(ao);
+
+  // ---------------------------------------------------------------- loop
+
+  const FIXED = 1 / 60;
+  const tmp = new CANNON.Vec3();
+  const timer = new THREE.Clock();
+  let acc = 0;
+
+  function step(dt) {
+    // Pointer: ease toward the cursor, then move the kinematic body there with
+    // a matching velocity so contacts push rather than teleport.
+    const vp = viewportAtZ0();
+    pointerTarget.set((mouse.x * vp.w) / 2, (mouse.y * vp.h) / 2, 0);
+    pointerPos.lerp(pointerTarget, 0.2);
+    pointerBody.velocity.set(
+      (pointerPos.x - pointerBody.position.x) / dt,
+      (pointerPos.y - pointerBody.position.y) / dt,
+      (pointerPos.z - pointerBody.position.z) / dt,
+    );
+
+    for (const { body, s } of baubles) {
+      const p = body.position;
+      const len = Math.hypot(p.x, p.y, p.z) || 1;
+      tmp.set(
+        (p.x / len) * PULL.x * dt * s,
+        (p.y / len) * PULL.y * dt * s,
+        (p.z / len) * PULL.z * dt * s,
+      );
+      body.applyImpulse(tmp);
+    }
+    world.step(dt);
+  }
+
+  function frame() {
+    const delta = Math.min(0.1, timer.getDelta());
+    acc += delta;
+    while (acc >= FIXED) { step(FIXED); acc -= FIXED; }
+
+    for (const { body, group } of baubles) {
+      group.position.copy(body.position);
+      group.quaternion.copy(body.quaternion);
+    }
+    composer.render(delta);
+    requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+  }
+  window.addEventListener('resize', resize);
+
+  requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
