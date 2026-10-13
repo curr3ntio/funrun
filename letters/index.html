@@ -254,6 +254,28 @@
     mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   });
 
+  // Click or tap a ball to flick it away from where it was hit. Rolling over
+  // the cluster with a brisk sweep (about 0.75 s across the screen) knocks a
+  // ball to roughly ROLLOVER_SPEED; a click is 25% harder. The push points from
+  // the hit point through the centre, so clicking a ball's edge sends it sideways.
+  const ROLLOVER_SPEED = 28;                         // measured peak speed from a brisk sweep
+  const CLICK_SPEED = ROLLOVER_SPEED * 1.25;
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  const ballMeshes = baubles.map((b) => b.group);
+  const meshToBody = new Map(baubles.map((b) => [b.group, b.body]));
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    camera.updateMatrixWorld();                      // in case no frame has rendered yet
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObjects(ballMeshes, false)[0];
+    if (!hit) return;
+    const body = meshToBody.get(hit.object);
+    const c = body.position;
+    const dir = new THREE.Vector3(c.x, c.y, c.z).sub(hit.point).normalize();   // into the ball
+    body.applyImpulse(new CANNON.Vec3(dir.x, dir.y, dir.z).scale(body.mass * CLICK_SPEED));
+  });
+
   function viewportAtZ0() {
     const h = 2 * CAM_Z * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
     return { w: h * camera.aspect, h };

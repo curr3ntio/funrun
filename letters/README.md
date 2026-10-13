@@ -9,7 +9,9 @@ from a CDN. No asset files.
 Each ball is a sphere in a world without gravity. Every frame it gets an
 impulse toward the origin, three times stronger on the vertical axis, so the
 pile spreads out wide and flat. A kinematic ball follows the pointer across the
-z = 0 plane and shoves them out of the way. Damping, friction, sizes and spawn
+z = 0 plane and shoves them out of the way. Click or tap a ball to flick it
+away from the spot you hit, 25% harder than a brisk sweep of the pointer
+knocks one (a measured ~28 units/s, so 35). Damping, friction, sizes and spawn
 positions use the baubles example's numbers; rapier's damping model is
 converted to cannon's.
 
@@ -23,4 +25,4 @@ ACES tone mapping, black half-resolution N8AO and SMAA finish the frame.
 
 The typographic underlay keeps the baubles example's layout, but the text is new.
 
-Serve the repository and open `baubles/` (ES modules need `http://`, not `file://`).
+Serve the repository and open `letters/` (ES modules need `http://`, not `file://`).
