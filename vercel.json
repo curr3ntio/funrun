@@ -1,6 +1,7 @@
 {
   "redirects": [
     { "source": "/baubles", "destination": "/letters/", "permanent": true },
-    { "source": "/baubles/:path*", "destination": "/letters/:path*", "permanent": true }
+    { "source": "/baubles/", "destination": "/letters/", "permanent": true },
+    { "source": "/baubles/:path+", "destination": "/letters/:path+", "permanent": true }
   ]
 }
