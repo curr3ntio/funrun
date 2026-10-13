@@ -44,6 +44,24 @@
     .side span { writing-mode: vertical-rl; font-weight: 600; font-size: 11px; letter-spacing: 0.04em; }
     .side i { width: 8px; height: 8px; border-radius: 50%; background: #000; }
     .bottom a { pointer-events: auto; color: #000; text-decoration: none; font-size: 12px; margin-left: 14px; }
+
+    /* Track button, top centre: outlined when stopped, filled while playing. */
+    .top { position: absolute; left: 0; right: 0; top: 34px; display: flex; justify-content: center; }
+    .play {
+      pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 9px;
+      height: 42px; padding: 0 18px 0 14px; border: 1.5px solid #000; border-radius: 21px;
+      background: rgba(255, 255, 255, 0.6); color: #000; backdrop-filter: blur(6px);
+      font: 700 24px/1 Antonio, sans-serif; letter-spacing: -1px;
+      transition: background 0.2s, color 0.2s, transform 0.08s;
+    }
+    .play:active { transform: scale(0.96); }
+    .play:focus-visible { outline: 2px solid #000; outline-offset: 3px; }
+    .play svg { width: 12px; height: 12px; fill: currentColor; }
+    .play .pause { display: none; }
+    .play[aria-pressed="true"] { background: #000; color: #fff; }
+    .play[aria-pressed="true"] .tri { display: none; }
+    .play[aria-pressed="true"] .pause { display: block; }
+    .play[data-loading] { opacity: 0.5; cursor: progress; }
     @media (max-width: 568px) {
       .layer { padding: 16px; }
       .big { left: 16px; right: 16px; bottom: 80px; font-size: 140px; letter-spacing: -4px; }
@@ -85,6 +103,13 @@
   <div id="container"></div>
 
   <div class="layer over">
+    <div class="top">
+      <button class="play" id="play" type="button" aria-pressed="false" aria-label="Play track 1">
+        <svg class="tri" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1l9 5-9 5z"/></svg>
+        <svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1h3v10H2zM7 1h3v10H7z"/></svg>
+        <span>1</span>
+      </button>
+    </div>
     <div class="side"><span>DRAG POINTER</span><i></i></div>
     <div class="row bottom">
       <p></p><p></p>
@@ -276,6 +301,116 @@
     body.applyImpulse(new CANNON.Vec3(dir.x, dir.y, dir.z).scale(body.mass * CLICK_SPEED));
   });
 
+  // ---------------------------------------------------------------- audio
+
+  // Button "1" loops a drum track. The spectrum is split into log-spaced
+  // bands and each ball listens to one of them. When its band jumps above its
+  // own recent average (a hit), the ball is bounced outward from the centre, so
+  // kicks, snares and hats each move a different set of balls. A hit raises
+  // the ball's outward speed to the kick speed rather than adding to it, each
+  // band waits a moment before it can fire again, and only balls near the
+  // cluster get kicked, so the pile bounces in place instead of drifting apart.
+  const TRACK_URL = 'track-1.wav';
+  const BANDS = 8;
+  const BAND_LO = 40, BAND_HI = 12000;               // Hz
+  const ONSET_FLOOR = 0.08;                          // frame-to-frame rise that counts as a hit
+  const HIT_COOLDOWN = 0.15;                         // s before the same band can fire again
+  const BEAT_SPEED = 20;                             // outward speed per unit of loudness above average
+  const MAX_KICK = 8;                                // cap, under a third of a brisk pointer sweep
+  const KICK_REACH = [4, 8];                         // full kicks inside 4 units of centre, none past 8
+
+  const playButton = document.getElementById('play');
+  const trackData = fetch(TRACK_URL).then((r) => r.arrayBuffer());   // start downloading now
+  let audio = null;                                  // { ctx, analyser, bins, edges }
+  let playing = false;
+  const bandLevel = new Float32Array(BANDS);
+  const bandAvg = new Float32Array(BANDS);
+  const bandCool = new Float32Array(BANDS);
+  const bandHit = new Float32Array(BANDS);           // kick speed this frame, 0 if no hit
+  baubles.forEach((b, i) => { b.band = i % BANDS; });
+
+  // Analyser bin index at each band edge, spaced evenly on a log scale.
+  function bandEdges(sampleRate, fftSize) {
+    const hzPerBin = sampleRate / fftSize;
+    return Array.from({ length: BANDS + 1 }, (_, i) =>
+      Math.max(1, Math.round((BAND_LO * (BAND_HI / BAND_LO) ** (i / BANDS)) / hzPerBin)));
+  }
+
+  async function startAudio() {
+    const ctx = new AudioContext();
+    const buffer = await ctx.decodeAudioData(await trackData);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.35;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;                              // 16 beats at 174 bpm, loops seamlessly
+    source.connect(analyser).connect(ctx.destination);
+    source.start();
+
+    const edges = bandEdges(ctx.sampleRate, analyser.fftSize);
+    return { ctx, analyser, bins: new Uint8Array(analyser.frequencyBinCount), edges };
+  }
+
+  playButton.addEventListener('click', async () => {
+    if (playButton.dataset.loading !== undefined) return;
+    if (!audio) {
+      playButton.dataset.loading = '';
+      try { audio = await startAudio(); } catch (err) { console.error(err); return; }
+      finally { delete playButton.dataset.loading; }
+      playing = true;
+    } else if (playing) {
+      await audio.ctx.suspend();
+      playing = false;
+    } else {
+      await audio.ctx.resume();
+      playing = true;
+    }
+    playButton.setAttribute('aria-pressed', String(playing));
+    playButton.setAttribute('aria-label', playing ? 'Pause track 1' : 'Play track 1');
+  });
+
+  // Once per rendered frame: turn the spectrum into band levels 0..1, keep a
+  // slow average of each, and fire a hit when a band jumps above its average.
+  function analyseBands(bins, edges, delta) {
+    const k = 1 - Math.exp(-delta * 4);              // ~0.25 s memory for the average
+    for (let b = 0; b < BANDS; b++) {
+      let sum = 0;
+      for (let i = edges[b]; i < edges[b + 1]; i++) sum += bins[i];
+      const level = sum / (Math.max(1, edges[b + 1] - edges[b]) * 255);
+      bandCool[b] -= delta;
+      bandHit[b] = 0;
+      if (level > bandAvg[b] && level - bandLevel[b] > ONSET_FLOOR && bandCool[b] <= 0) {
+        bandHit[b] = Math.min(MAX_KICK, BEAT_SPEED * (level - bandAvg[b]));
+        bandCool[b] = HIT_COOLDOWN;
+      }
+      bandLevel[b] = level;
+      bandAvg[b] += (level - bandAvg[b]) * k;
+    }
+  }
+
+  function readAudio(delta) {
+    if (!playing) { bandHit.fill(0); return; }
+    audio.analyser.getByteFrequencyData(audio.bins);
+    analyseBands(audio.bins, audio.edges, delta);
+  }
+
+  // Raise each hit ball's outward speed to its band's kick speed.
+  function applyBeatKicks() {
+    for (const { body, band } of baubles) {
+      const kick = bandHit[band];
+      if (!kick) continue;
+      const p = body.position, v = body.velocity;
+      const len = Math.hypot(p.x, p.y, p.z) || 1;
+      const reach = 1 - THREE.MathUtils.clamp((len - KICK_REACH[0]) / (KICK_REACH[1] - KICK_REACH[0]), 0, 1);
+      if (reach <= 0) continue;
+      const nx = p.x / len, ny = p.y / len, nz = p.z / len;
+      const extra = kick * reach - (v.x * nx + v.y * ny + v.z * nz);
+      if (extra <= 0) continue;
+      v.x += nx * extra; v.y += ny * extra; v.z += nz * extra;
+    }
+  }
+
   function viewportAtZ0() {
     const h = 2 * CAM_Z * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
     return { w: h * camera.aspect, h };
@@ -330,6 +465,10 @@
 
   function frame() {
     const delta = Math.min(0.1, timer.getDelta());
+
+    readAudio(delta);
+    applyBeatKicks();
+
     acc += delta;
     while (acc >= FIXED) { step(FIXED); acc -= FIXED; }
 
