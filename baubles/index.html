@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Christmas Baubles</title>
+  <title>The Letters</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
@@ -64,14 +64,14 @@
     <div style="height: 60px"></div>
     <div class="row">
       <div class="label">
-        <p><b>Best Served Bold</b></p>
-        <p>Christmas Baubles</p>
+        <p><b>The Letters</b></p>
+        <p>Three Fiber</p>
         <div class="dash"></div>
       </div>
       <p></p>
       <p></p>
     </div>
-    <div class="big"><p>X</p><p>_24</p></div>
+    <div class="big"><p>X</p><p>_30</p></div>
     <div class="row bottom">
       <div class="label full">
         <p><b>Physics, Effects</b></p>
@@ -108,9 +108,8 @@
   <script type="module">
   import * as THREE from 'three';
   import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-  import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
   import * as CANNON from 'cannon-es';
-  import { EffectComposer, RenderPass, EffectPass, ToneMappingEffect, ToneMappingMode } from 'postprocessing';
+  import { EffectComposer, RenderPass, EffectPass, ToneMappingEffect, ToneMappingMode, SMAAEffect } from 'postprocessing';
   import { N8AOPostPass } from 'n8ao';
 
   // Rebuilt after Paul Henschel's "Best Served Bold" baubles (pmndrs, 2020).
@@ -136,7 +135,6 @@
   renderer.setClearColor(0x000000, 0);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMappingExposure = 1.5;                // tone mapping itself happens in the composer
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -150,61 +148,58 @@
 
   // ---------------------------------------------------------------- lights
 
-  scene.add(new THREE.AmbientLight(0xffffff, Math.PI));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5 * Math.PI));
 
   const spot = new THREE.SpotLight(0xffffff, Math.PI, 0, 0.2, 1, 0);
-  spot.position.set(20, 20, 25);
+  spot.position.set(30, 30, 30);
   spot.castShadow = true;
   spot.shadow.mapSize.set(512, 512);
-  spot.shadow.camera.near = 10;
-  spot.shadow.camera.far = 70;
+  spot.shadow.camera.near = 20;
+  spot.shadow.camera.far = 80;
   spot.shadow.bias = -0.0005;
   scene.add(spot, spot.target);
 
-  const key = new THREE.DirectionalLight(0xffffff, 4 * Math.PI);
-  key.position.set(0, 5, -4);
-  const under = new THREE.DirectionalLight(0xff0000, 4 * Math.PI);
-  under.position.set(0, -15, 0);
-  scene.add(key, under);
-
   // ---------------------------------------------------------------- meshes
 
-  const baubleMaterial = new THREE.MeshLambertMaterial({ color: '#c0a0a0', emissive: 'red' });
-  const capMaterial = new THREE.MeshStandardMaterial({
-    metalness: 0.75, roughness: 0.15,
-    color: '#8a492f', emissive: '#600000', envMapIntensity: 20,
-  });
-  const sphereGeometry = new THREE.SphereGeometry(1, 28, 28);
+  // Glossy white balls, each with a letter painted on, after the pmndrs
+  // "object clump" example (which uses a brushed X). The letters are drawn on a
+  // canvas in equirectangular space, so they sit undistorted on the equator.
+  // Change LETTERS to pick what goes on the balls; one is picked at random per ball.
+  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const FONT = '700 170px Antonio, "Arial Narrow", sans-serif';
+  await document.fonts.load(FONT).catch(() => {});  // the canvas only sees loaded fonts
 
-  // The cap, built from a lathe profile plus a hanging loop instead of a glb.
-  // Units are for a radius-1 bauble; it sits on the +Z pole.
-  function makeCapGeometry() {
-    const profile = [
-      [0.00, 0.86], [0.20, 0.88], [0.255, 0.93], [0.285, 0.96], [0.295, 0.99],
-      [0.275, 1.02], [0.265, 1.05], [0.265, 1.19], [0.285, 1.21], [0.295, 1.25],
-      [0.285, 1.28], [0.230, 1.31], [0.090, 1.33], [0.060, 1.345], [0.060, 1.37],
-      [0.000, 1.38],
-    ].map(([x, y]) => new THREE.Vector2(x, y));
-    const band = new THREE.LatheGeometry(profile, 40);
+  function makeLetterTexture(ch) {
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 512;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = '#000';
+    g.font = FONT;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(ch, 512, 262);                        // canvas centre = front of the ball
 
-    // Shallow vertical grooves around the band, like a crimped crown.
-    const p = band.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-      if (y < 1.04 || y > 1.2) continue;
-      const a = Math.atan2(z, x);
-      const k = 1 - 0.06 * Math.max(0, Math.cos(a * 10)) ** 6;
-      p.setXYZ(i, x * k, y, z * k);
-    }
-    band.computeVertexNormals();
-
-    const loop = new THREE.TorusGeometry(0.1, 0.026, 10, 28);
-    loop.translate(0, 1.47, 0);
-    const geo = mergeGeometries([band.toNonIndexed(), loop.toNonIndexed()]);
-    geo.rotateX(Math.PI / 2);                        // lathe axis Y -> body axis Z
-    return geo;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
   }
-  const capGeometry = makeCapGeometry();
+
+  // One material per distinct letter, shared by every ball that shows it.
+  const letterMaterials = new Map();
+  function letterMaterial(ch) {
+    if (!letterMaterials.has(ch)) {
+      letterMaterials.set(ch, new THREE.MeshStandardMaterial({
+        color: 'white', roughness: 0, envMapIntensity: 1, map: makeLetterTexture(ch),
+      }));
+    }
+    return letterMaterials.get(ch);
+  }
+  const randomLetter = () => LETTERS[Math.floor(Math.random() * LETTERS.length)];
+
+  const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
 
   // ---------------------------------------------------------------- physics
 
@@ -223,7 +218,6 @@
   // rapier damps v by 1/(1 + dt*d); cannon by (1 - d)^dt. Match the per-second decay.
   const damp = (d) => 1 - Math.exp(-d);
 
-  const capShapeRot = new CANNON.Quaternion().setFromEuler(Math.PI / 2, 0, 0);  // cylinder Y -> Z
   const spread = THREE.MathUtils.randFloatSpread;
 
   const baubles = [];
@@ -237,19 +231,12 @@
       position: new CANNON.Vec3(spread(20), spread(20) - 25, spread(20) - 10),
     });
     body.addShape(new CANNON.Sphere(s));
-    body.addShape(new CANNON.Cylinder(0.275 * s, 0.275 * s, 0.3 * s, 10),
-      new CANNON.Vec3(0, 0, 1.2 * s), capShapeRot);
     body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
     world.addBody(body);
 
-    const group = new THREE.Group();
-    const ball = new THREE.Mesh(sphereGeometry, baubleMaterial);
-    ball.scale.setScalar(s);
-    ball.castShadow = ball.receiveShadow = true;
-    const cap = new THREE.Mesh(capGeometry, capMaterial);
-    cap.scale.setScalar(s);
-    cap.castShadow = true;
-    group.add(ball, cap);
+    const group = new THREE.Mesh(sphereGeometry, letterMaterial(randomLetter()));
+    group.scale.setScalar(s);
+    group.castShadow = group.receiveShadow = true;
     scene.add(group);
 
     baubles.push({ body, group, s });
@@ -276,15 +263,16 @@
 
   const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
   composer.addPass(new RenderPass(scene, camera));
-  // Same order as the original: tone map first, then multiply the red AO on top,
-  // so the occlusion stays a deep pink instead of being pushed to orange by ACES.
   composer.addPass(new EffectPass(camera, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC })));
   const ao = new N8AOPostPass(scene, camera, innerWidth, innerHeight);
   ao.configuration.aoRadius = 2;
-  ao.configuration.distanceFalloff = 2.5;
   ao.configuration.intensity = 1;
-  ao.configuration.color = new THREE.Color('red');
+  ao.configuration.aoSamples = 6;
+  ao.configuration.denoiseSamples = 4;
+  ao.configuration.halfRes = true;
+  ao.configuration.color = new THREE.Color('black');
   composer.addPass(ao);
+  composer.addPass(new EffectPass(camera, new SMAAEffect()));
 
   // ---------------------------------------------------------------- loop
 

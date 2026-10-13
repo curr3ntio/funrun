@@ -10,7 +10,7 @@ folders, so they cannot interfere with each other.
 | `slug/`  | Slug Luv: striped worms on a paper table, three.js + a tiny physics solver |
 | `bubbly/` | Poppin' Bubbally: a jostling cluster of soap bubbles, three.js + cannon-es, click to pop |
 | `hologram/` | Hologram Particles: a droid as 75k particles in a glowing cylinder, three.js WebGPU + TSL |
-| `baubles/` | Christmas Baubles: pink baubles clustering in zero gravity, three.js + cannon-es + N8AO |
+| `baubles/` | The Letters: glossy white letter balls clumping in zero gravity, three.js + cannon-es + N8AO |
 
 The root `index.html` is a plain list linking to them.
 
