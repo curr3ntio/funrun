@@ -30,14 +30,16 @@ The "1" button at the top loops `track-1.wav`, a 174 bpm drum loop from the
 without a gap. It plays through a Web Audio analyser, and the spectrum is split
 into eight log-spaced bands from 40 Hz to 12 kHz. Each ball listens to one band.
 When that band jumps above its recent average, the ball is bounced outward,
-so kicks, snares and hats each move a different set of balls. Click the
-button again to pause.
+so kicks, snares and hats each move a different set of balls. The bass
+(the two lowest bands, about 40–170 Hz) kicks twice as hard, and every bass
+hit also reaches every ball at 60% strength, so the whole pile thumps on the
+kick drum. Click the button again to pause.
 
-Kicks raise a ball's outward speed (capped at 8 units/s) instead of adding
-to it. Each band waits 150 ms before firing again, and only balls within
+Kicks raise a ball's outward speed (capped at 8 units/s, 16 for bass) instead
+of adding to it. Each band waits 150 ms before firing again, and only balls within
 4–8 units of the centre get kicked. Without those limits the hits outpace the
 pull toward the centre and the cluster drifts apart. With them, it pulses
-between about 4.7 and 5.7 units from the centre and settles back when paused.
+between about 5.9 and 7 units from the centre and settles back when paused.
 
 The typographic underlay keeps the baubles example's layout, but the text is new.
 

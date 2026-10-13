@@ -318,6 +318,9 @@
   const BEAT_SPEED = 20;                             // outward speed per unit of loudness above average
   const MAX_KICK = 8;                                // cap, under a third of a brisk pointer sweep
   const KICK_REACH = [4, 8];                         // full kicks inside 4 units of centre, none past 8
+  const BASS_BANDS = 2;                              // the lowest bands, ~40-170 Hz: kick drum and bass
+  const BASS_BOOST = 2;                              // bass hits kick twice as hard, with twice the cap
+  const BASS_SHARE = 0.6;                            // and every ball gets this share of a bass hit
 
   const playButton = document.getElementById('play');
   const trackData = fetch(TRACK_URL).then((r) => r.arrayBuffer());   // start downloading now
@@ -381,7 +384,8 @@
       bandCool[b] -= delta;
       bandHit[b] = 0;
       if (level > bandAvg[b] && level - bandLevel[b] > ONSET_FLOOR && bandCool[b] <= 0) {
-        bandHit[b] = Math.min(MAX_KICK, BEAT_SPEED * (level - bandAvg[b]));
+        const boost = b < BASS_BANDS ? BASS_BOOST : 1;
+        bandHit[b] = Math.min(MAX_KICK * boost, BEAT_SPEED * boost * (level - bandAvg[b]));
         bandCool[b] = HIT_COOLDOWN;
       }
       bandLevel[b] = level;
@@ -395,10 +399,13 @@
     analyseBands(audio.bins, audio.edges, delta);
   }
 
-  // Raise each hit ball's outward speed to its band's kick speed.
+  // Raise each hit ball's outward speed to its band's kick speed. A bass hit
+  // also reaches every ball, so the whole pile thumps on the kick drum.
   function applyBeatKicks() {
+    let bass = 0;
+    for (let b = 0; b < BASS_BANDS; b++) bass = Math.max(bass, bandHit[b]);
     for (const { body, band } of baubles) {
-      const kick = bandHit[band];
+      const kick = Math.max(bandHit[band], bass * BASS_SHARE);
       if (!kick) continue;
       const p = body.position, v = body.velocity;
       const len = Math.hypot(p.x, p.y, p.z) || 1;
